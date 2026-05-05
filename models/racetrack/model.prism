@@ -1,0 +1,32 @@
+mdp
+
+label "Crash" = !((x>=5&x<=20&y>=5&y<=10)|(x>=5&x<=10&y>=10&y<=20));
+label "Goal" = (x=18&y>=5&y<=10);
+
+module Scheduler
+    phase: [0..2]; // 0: Controller makes choice, 1: Vehicle moves
+
+    [Steer] (phase=0) -> (phase'=1);
+    [Move] (phase=1) -> (phase'=0);
+endmodule
+
+module Vehicle
+    x: [0..20] init 7;
+    y: [0..20] init 18;
+
+    [Move] (choice=0) -> (x'=max(0, x-1));
+    [Move] (choice=1) -> (y'=max(0, y-1));
+    [Move] (choice=2) -> (x'=min(x+1,20));
+    [Move] (choice=3) -> (y'=min(y+1,20));
+endmodule
+
+module Controller
+    choice: [0..3]; // 0: left, 1: up, 2: right, 3: down
+    counter: [0..50];
+    threshold: [0..20] init repair(3);
+
+    [Steer] (counter<threshold) -> (choice'=repair(0))&(counter'=min(counter+1, 50));
+    [Steer] (counter>=threshold) -> (choice'=repair(0))&(counter'=min(counter+1, 50));
+
+    [Move] true -> (choice'=0); // Reset choice to reduce state space
+endmodule

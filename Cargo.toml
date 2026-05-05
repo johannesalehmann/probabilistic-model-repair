@@ -1,0 +1,8 @@
+[package]
+name = "probabilisitic-model-repair"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+prism-parser = {git = "https://github.com/johannesalehmann/SVaBResp"}
+prism-model = {git = "https://github.com/johannesalehmann/SVaBResp"}
