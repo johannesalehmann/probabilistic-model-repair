@@ -25,7 +25,7 @@ module Controller
     counter: [0..50];
     threshold: [0..20] init repair(3);
 
-    [Steer] (counter<threshold) -> (choice'=repair(0))&(counter'=min(counter+1, 50));
+    [Steer] (counter<threshold) -> (choice'=repair(1))&(counter'=min(counter+1, 50));
     [Steer] (counter>=threshold) -> (choice'=repair(0))&(counter'=min(counter+1, 50));
 
     [Move] true -> (choice'=0); // Reset choice to reduce state space

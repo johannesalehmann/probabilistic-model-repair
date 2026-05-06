@@ -1,16 +1,89 @@
+mod html_engine;
 mod prism;
 
+use crate::html_engine::{RepairKind, RepairedSpan};
 use prism_model::{
-    Expression, Identifier, IdentityMapExpression, MapExpression, VariableInfo,
+    Expression, Identifier, IdentityMapExpression, MapExpression, Model, VariableInfo,
     VariableRange, VariableReference,
 };
 use prism_parser::Span;
+use std::collections::HashMap;
 use std::fs;
+
+struct VariableReferenceToPrismIndex {
+    map: HashMap<usize, usize>,
+}
+
+impl VariableReferenceToPrismIndex {
+    pub fn from_model(
+        model: &Model<
+            (),
+            Identifier<Span>,
+            Expression<VariableReference, Span>,
+            VariableReference,
+            Span,
+        >,
+    ) -> Self {
+        let mut map = HashMap::new();
+
+        let mut index = 0;
+        for (variable_index, variable) in model.variable_manager.variables.iter().enumerate() {
+            if variable.scope.is_none() && !variable.is_constant {
+                map.insert(variable_index, index);
+                index += 1;
+            }
+        }
+        for module_index in 0..model.modules.modules.len() {
+            for (variable_index, variable) in model.variable_manager.variables.iter().enumerate() {
+                if variable.scope == Some(module_index) && !variable.is_constant {
+                    map.insert(variable_index, index);
+                    index += 1;
+                }
+            }
+        }
+
+        Self { map }
+    }
+
+    pub fn ref_to_index(&self, reference: &VariableReference) -> usize {
+        self.map[&reference.index]
+    }
+}
 
 struct RepairModule {
     init_constraints: Vec<Expression<VariableReference, Span>>,
     variables: Vec<VariableInfo<Expression<VariableReference, Span>, Span>>,
     variable_counter: usize,
+    repairs: Vec<Repair>,
+}
+
+enum Repair {
+    IntegerValueReplacement {
+        original_value: i64,
+        original_span: Span,
+        repair_variable: VariableReference,
+        costs: CostFunction,
+    },
+}
+
+enum CostFunction {
+    Uniform { costs: f64 },
+    Linear { factor: f64 },
+}
+
+impl CostFunction {
+    pub fn get_cost(&self, original_value: i64, new_value: i64) -> f64 {
+        match self {
+            CostFunction::Uniform { costs } => {
+                if original_value != new_value {
+                    *costs
+                } else {
+                    0.0
+                }
+            }
+            CostFunction::Linear { factor } => (original_value - new_value).abs() as f64 * factor,
+        }
+    }
 }
 
 impl RepairModule {
@@ -19,6 +92,7 @@ impl RepairModule {
             init_constraints: Vec::new(),
             variables: Vec::new(),
             variable_counter,
+            repairs: Vec::new(),
         }
     }
 
@@ -34,10 +108,8 @@ impl RepairModule {
 }
 
 fn main() {
-    let model = prism_parser::parse_prism::<&str>(
-        &fs::read_to_string("models/racetrack/model.prism").unwrap(),
-        &[],
-    );
+    let model_source = &fs::read_to_string("models/racetrack/model.prism").unwrap();
+    let model = prism_parser::parse_prism::<&str>(model_source, &[]);
     let specification = fs::read_to_string("models/racetrack/model.props").unwrap();
 
     if let Some(mut model) = model.model.output {
@@ -77,6 +149,19 @@ fn main() {
             }
         }
 
+        for (index, variable) in model.variable_manager.variables.iter_mut().enumerate() {
+            if let Some(init_expression) = &mut variable.initial_value {
+                fix_expression(
+                    init_expression,
+                    &RepairContext::InitialValue {
+                        variable: VariableReference::new(index),
+                    },
+                    &mut repair_module,
+                    &variable_bounds,
+                )
+            }
+        }
+
         model.init_statements_to_init_block();
 
         for variable in repair_module.variables {
@@ -103,9 +188,42 @@ fn main() {
                 ))
             }
         }
+        let var_ref_to_prism = VariableReferenceToPrismIndex::from_model(&model);
         let model = model.to_string();
         let property = format!("\"Filtered\": filter(print, {}, \"init\");", specification);
-        prism::call_prism(&model, &property);
+        let feasible_combinations = prism::call_prism(&model, &property);
+
+        let mut repair_document = html_engine::RepairOutput::new(model_source.clone());
+        for feasible_combination in feasible_combinations {
+            let mut repair_tab = html_engine::Repair::new();
+            for repair in &repair_module.repairs {
+                match repair {
+                    Repair::IntegerValueReplacement {
+                        original_value,
+                        original_span,
+                        repair_variable,
+                        costs,
+                    } => {
+                        let new_value = feasible_combination
+                            .get_int(var_ref_to_prism.ref_to_index(repair_variable));
+                        repair_tab.add_cost(costs.get_cost(*original_value, new_value));
+                        let kind = if *original_value != new_value {
+                            RepairKind::Fix
+                        } else {
+                            RepairKind::Unchanged
+                        };
+                        repair_tab.add_span(RepairedSpan::new(
+                            original_span.clone(),
+                            new_value.to_string(),
+                            kind,
+                        ));
+                    }
+                }
+            }
+            repair_document.add_repair(repair_tab);
+        }
+
+        std::fs::write("repairs.html", repair_document.to_html()).unwrap();
     } else {
         println!("Failed to parse model!");
     }
@@ -271,12 +389,20 @@ impl<'a, 'b> RepairVisitor<'a, 'b> {
             Expression::Bool(_, _) => {}
             Expression::VarOrConst(_, _) => {}
             Expression::Label(_, _) => {}
-            Expression::Function(name, args, _) => {
+            Expression::Function(name, args, function_span) => {
                 if name.name == "repair" {
                     if let Expression::Int(val, _) = args[0] {
                         match bounds {
                             PermissibleBounds::IntegerRange { min, max } => {
                                 let reference = self.create_repair_variable(min, max);
+                                self.repair_module
+                                    .repairs
+                                    .push(Repair::IntegerValueReplacement {
+                                        original_value: val,
+                                        original_span: function_span.clone(),
+                                        repair_variable: reference,
+                                        costs: CostFunction::Linear { factor: 1.0 },
+                                    });
                                 *expression = Expression::VarOrConst(reference, Span::splat(0));
                             }
                             PermissibleBounds::FloatRange { .. } => {
