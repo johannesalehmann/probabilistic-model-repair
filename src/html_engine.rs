@@ -21,18 +21,34 @@ impl RepairedSpan {
 pub enum RepairKind {
     Fix,
     Unchanged,
+    ToRepair,
+}
+
+enum RepairTitle {
+    Base,
+    Repair,
 }
 
 pub struct Repair {
     spans: Vec<RepairedSpan>,
     cost: f64,
+    title: RepairTitle,
 }
 
 impl Repair {
-    pub fn new() -> Self {
+    pub fn new_base() -> Self {
         Self {
             spans: Vec::new(),
             cost: 0.0,
+            title: RepairTitle::Base,
+        }
+    }
+
+    pub fn new_repair() -> Self {
+        Self {
+            spans: Vec::new(),
+            cost: 0.0,
+            title: RepairTitle::Repair,
         }
     }
 
@@ -68,9 +84,6 @@ impl RepairOutput {
         let mut tab_headers = Vec::new();
         let mut tabs = Vec::new();
 
-        tab_headers.push("base".to_string());
-        tabs.push(Self::code_to_html(&self.base_source_code)); // TODO: Highlight repair locations
-
         for repair in &self.repairs {
             let mut entries = repair.spans.clone();
             entries.sort_unstable_by(|e1, e2| e2.section.start.cmp(&e1.section.start));
@@ -79,6 +92,7 @@ impl RepairOutput {
                 let class = match repair_entry.kind {
                     RepairKind::Fix => "repair",
                     RepairKind::Unchanged => "",
+                    RepairKind::ToRepair => "to-repair",
                 };
                 code.replace_range(
                     repair_entry.section.into_range(),
@@ -89,7 +103,13 @@ impl RepairOutput {
                 )
             }
 
-            tab_headers.push(format!("repair (cost: {:.2})", repair.cost));
+            let title = match repair.title {
+                RepairTitle::Base => "base".to_string(),
+                RepairTitle::Repair => {
+                    format!("repair (cost: {:.2})", repair.cost)
+                }
+            };
+            tab_headers.push(title);
             tabs.push(Self::code_to_html(&code));
         }
 

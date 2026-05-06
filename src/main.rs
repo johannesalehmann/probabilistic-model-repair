@@ -194,8 +194,22 @@ fn main() {
         let feasible_combinations = prism::call_prism(&model, &property);
 
         let mut repair_document = html_engine::RepairOutput::new(model_source.clone());
+        let mut base_tab = html_engine::Repair::new_base();
+        for repair in &repair_module.repairs {
+            match repair {
+                Repair::IntegerValueReplacement { original_span, .. } => {
+                    base_tab.add_span(RepairedSpan::new(
+                        original_span.clone(),
+                        model_source[original_span.into_range()].to_string(),
+                        RepairKind::ToRepair,
+                    ))
+                }
+            }
+        }
+        repair_document.add_repair(base_tab);
+
         for feasible_combination in feasible_combinations {
-            let mut repair_tab = html_engine::Repair::new();
+            let mut repair_tab = html_engine::Repair::new_repair();
             for repair in &repair_module.repairs {
                 match repair {
                     Repair::IntegerValueReplacement {
