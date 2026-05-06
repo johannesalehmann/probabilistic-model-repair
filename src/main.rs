@@ -72,6 +72,30 @@ enum CostFunction {
 }
 
 impl CostFunction {
+    pub fn from_expression(expression: &Expression<VariableReference, Span>) -> Self {
+        match expression {
+            Expression::Function(identifier, args, span) => {
+                fn arg_to_float(arg: &Expression<VariableReference, Span>) -> f64 {
+                    match arg {
+                        Expression::Int(val, _) => *val as f64,
+                        Expression::Float(val, _) => *val,
+                        _ => panic!("Invalid value for repair costs: {:?}", arg),
+                    }
+                }
+                match identifier.name.as_str() {
+                    "uniform" => Self::Uniform {
+                        costs: arg_to_float(&args[0]),
+                    },
+                    "linear" => Self::Linear {
+                        factor: arg_to_float(&args[0]),
+                    },
+                    name => panic!("Invalid repair method: {}", name),
+                }
+            }
+            _ => panic!("Invalid cost specifier for repair function"),
+        }
+    }
+
     pub fn get_cost(&self, original_value: i64, new_value: i64) -> f64 {
         match self {
             CostFunction::Uniform { costs } => {
@@ -408,6 +432,11 @@ impl<'a, 'b> RepairVisitor<'a, 'b> {
                     if let Expression::Int(val, _) = args[0] {
                         match bounds {
                             PermissibleBounds::IntegerRange { min, max } => {
+                                let costs = if args.len() >= 2 {
+                                    CostFunction::from_expression(&args[1])
+                                } else {
+                                    CostFunction::Uniform { costs: 1.0 }
+                                };
                                 let reference = self.create_repair_variable(min, max);
                                 self.repair_module
                                     .repairs
@@ -415,7 +444,7 @@ impl<'a, 'b> RepairVisitor<'a, 'b> {
                                         original_value: val,
                                         original_span: function_span.clone(),
                                         repair_variable: reference,
-                                        costs: CostFunction::Linear { factor: 1.0 },
+                                        costs,
                                     });
                                 *expression = Expression::VarOrConst(reference, Span::splat(0));
                             }
