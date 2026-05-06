@@ -87,7 +87,11 @@ impl RepairOutput {
         for repair in &self.repairs {
             let mut entries = repair.spans.clone();
             entries.sort_unstable_by(|e1, e2| e2.section.start.cmp(&e1.section.start));
-            let mut code = self.base_source_code.clone();
+
+            // We need to replace < by &lt; and > by &gt; but if we do it now, we break the indexing
+            //  used during replacement. Instead, use arbitrary temporary characters and replace them
+            //  later.
+            let mut code = self.base_source_code.replace("<", "\\").replace(">", "~");
             for repair_entry in entries {
                 let class = match repair_entry.kind {
                     RepairKind::Fix => "repair",
@@ -110,6 +114,7 @@ impl RepairOutput {
                 }
             };
             tab_headers.push(title);
+            code = code.replace("\\", "&lt;").replace("~", "&gt;");
             tabs.push(Self::code_to_html(&code));
         }
 
