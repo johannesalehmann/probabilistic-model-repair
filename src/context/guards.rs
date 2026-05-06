@@ -30,11 +30,6 @@ struct VariableConstraints {
 }
 
 impl VariableConstraints {
-    pub fn new() -> Self {
-        Self {
-            constraints: Vec::new(),
-        }
-    }
     pub fn with_constraint(constraint: Constraint) -> Self {
         Self {
             constraints: vec![constraint],
@@ -47,17 +42,18 @@ enum Constraint {
     LessOrEqual(i64),
     GreaterThan(i64),
     GreaterOrEqual(i64),
+    Equals(i64),
 }
 
-struct VariableBounds {
-    lower_bound: Option<i64>,
-    upper_bound: Option<i64>,
+pub struct VariableBounds {
+    pub lower_bound: Option<i64>,
+    pub upper_bound: Option<i64>,
 }
 
 impl VariableBounds {
-    pub fn from_variable_constraints(constraints: &VariableConstraints) -> Self {
-        let mut lower_bound = i64::MAX;
-        let mut upper_bound = i64::MIN;
+    fn from_variable_constraints(constraints: &VariableConstraints) -> Self {
+        let mut lower_bound = i64::MIN;
+        let mut upper_bound = i64::MAX;
 
         for constraint in &constraints.constraints {
             match constraint {
@@ -73,15 +69,21 @@ impl VariableBounds {
                 Constraint::GreaterOrEqual(val) => {
                     lower_bound = lower_bound.max(*val);
                 }
+                Constraint::Equals(val) => {
+                    // TODO: Properly handle case where additional constraints are placed that
+                    //  contradict the equals constraint
+                    lower_bound = *val;
+                    upper_bound = *val;
+                }
             }
         }
 
-        let lower_bound = if lower_bound == i64::MAX {
+        let lower_bound = if lower_bound == i64::MIN {
             None
         } else {
             Some(lower_bound)
         };
-        let upper_bound = if upper_bound == i64::MIN {
+        let upper_bound = if upper_bound == i64::MAX {
             None
         } else {
             Some(upper_bound)
@@ -95,10 +97,30 @@ impl VariableBounds {
 }
 
 pub struct GuardConstraints {
-    variables: HashMap<usize, VariableBounds>,
+    pub variables: HashMap<usize, VariableBounds>,
 }
 
 impl GuardConstraints {
+    pub fn apply_to_variable_ranges(
+        &self,
+        variable_bounds: &crate::context::VariableRanges,
+    ) -> crate::context::VariableRanges {
+        let mut res = crate::context::VariableRanges {
+            bounds: variable_bounds.bounds.clone(),
+        };
+
+        for (variable, bound) in &self.variables {
+            if let Some(min) = bound.lower_bound {
+                res.bounds[*variable].add_min_int_constraint(min);
+            }
+            if let Some(max) = bound.upper_bound {
+                res.bounds[*variable].add_max_int_constraint(max);
+            }
+        }
+
+        res
+    }
+
     pub fn from_expression(expression: &Expression<VariableReference, Span>) -> Self {
         let mut constraints = VariablesConstraints::new();
         Self::collect_constraints(expression, &mut constraints);
@@ -143,6 +165,11 @@ impl GuardConstraints {
                 if let Some((v, c)) =
                     Self::construct_constraint(lhs, rhs, GreaterOrEqual, LessOrEqual)
                 {
+                    constraints.add_constraint(v, c);
+                }
+            }
+            Expression::Equals(lhs, rhs, _) => {
+                if let Some((v, c)) = Self::construct_constraint(lhs, rhs, Equals, Equals) {
                     constraints.add_constraint(v, c);
                 }
             }

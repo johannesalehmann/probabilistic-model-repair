@@ -1,4 +1,4 @@
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum PermissibleBounds {
     IntegerRange { min: i64, max: i64 },
     FloatRange { min: f64, max: f64 },
@@ -6,6 +6,19 @@ pub enum PermissibleBounds {
 }
 
 impl PermissibleBounds {
+    pub fn add_min_int_constraint(&mut self, constraint: i64) {
+        match self {
+            PermissibleBounds::IntegerRange { min, .. } => *min = (*min).max(constraint),
+            _ => panic!("Can only add integer min bound to integer range"),
+        }
+    }
+    pub fn add_max_int_constraint(&mut self, constraint: i64) {
+        match self {
+            PermissibleBounds::IntegerRange { max, .. } => *max = (*max).min(constraint),
+            _ => panic!("Can only add integer max bound to integer range"),
+        }
+    }
+
     pub fn min_int(&self) -> i64 {
         match self {
             PermissibleBounds::IntegerRange { min, .. } => *min,

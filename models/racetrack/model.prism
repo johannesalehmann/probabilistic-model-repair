@@ -23,10 +23,9 @@ endmodule
 module Controller
     choice: [0..3]; // 0: left, 1: up, 2: right, 3: down
     counter: [0..50];
-    threshold: [0..20] init repair(15, linear_costs(1.0));
 
-    [Steer] (counter<threshold) -> (choice'=repair(1))&(counter'=min(counter+1, 50));
-    [Steer] (counter>=threshold) -> (choice'=repair(0))&(counter'=min(counter+1, 50));
+    [Steer] (counter<repair(15, grouped(thresh_group()))) -> (choice'=repair(1))&(counter'=min(counter+1, 50));
+    [Steer] (counter>=repair(15, grouped(thresh_group()))) -> (choice'=repair(0))&(counter'=min(counter+1, 50));
 
     [Move] true -> (choice'=0); // Reset choice to reduce state space
 endmodule

@@ -2,8 +2,8 @@ mod parameters;
 mod repair_expression;
 mod types;
 
-use crate::context::{PermissibleBounds, VariableRanges};
-use prism_model::{Expression, Identifier, Model, VariableReference};
+use crate::context::{GuardConstraints, PermissibleBounds, VariableRanges};
+use prism_model::{Displayable, Expression, Identifier, Model, VariableReference};
 use prism_parser::Span;
 use repair_expression::Repairer;
 pub use repair_expression::evaluate_const;
@@ -34,15 +34,16 @@ pub fn wire_up_repairs(
             let mut repairer = Repairer::new(variable_ranges, &mut repairs);
             repairer.repair_expression(&mut command.guard, PermissibleBounds::Unknown);
 
-            // TODO: Figure out restricted ranges
+            let guard_constraints = GuardConstraints::from_expression(&command.guard);
+            let new_bounds = guard_constraints.apply_to_variable_ranges(&variable_ranges);
 
             for update in &mut command.updates {
                 // TODO: Probability repair probably requires separate handling
-                let mut repairer = Repairer::new(variable_ranges, &mut repairs);
+                let mut repairer = Repairer::new(&new_bounds, &mut repairs);
                 repairer.repair_expression(&mut update.probability, PermissibleBounds::Unknown);
 
                 for assignment in &mut update.assignments {
-                    let mut repairer = Repairer::new(variable_ranges, &mut repairs);
+                    let mut repairer = Repairer::new(&new_bounds, &mut repairs);
                     repairer.repair_expression(
                         &mut assignment.value,
                         variable_ranges.bounds[assignment.target.index],
