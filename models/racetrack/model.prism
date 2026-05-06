@@ -23,7 +23,7 @@ endmodule
 module Controller
     choice: [0..3]; // 0: left, 1: up, 2: right, 3: down
     counter: [0..50];
-    threshold: [0..20] init repair(3, linear(1.0));
+    threshold: [0..20] init repair(15, linear_costs(1.0));
 
     [Steer] (counter<threshold) -> (choice'=repair(1))&(counter'=min(counter+1, 50));
     [Steer] (counter>=threshold) -> (choice'=repair(0))&(counter'=min(counter+1, 50));

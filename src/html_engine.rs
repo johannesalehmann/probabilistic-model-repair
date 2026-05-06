@@ -44,16 +44,12 @@ impl Repair {
         }
     }
 
-    pub fn new_repair() -> Self {
+    pub fn new_repair(cost: f64) -> Self {
         Self {
             spans: Vec::new(),
-            cost: 0.0,
+            cost,
             title: RepairTitle::Repair,
         }
-    }
-
-    pub fn add_cost(&mut self, cost: f64) {
-        self.cost += cost;
     }
 
     pub fn add_span(&mut self, span: RepairedSpan) {

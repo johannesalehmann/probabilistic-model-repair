@@ -2,14 +2,8 @@ use std::collections::HashMap;
 use std::process::Stdio;
 
 pub struct FeasibleCombination {
-    variables: Vec<String>,
+    pub variables: Vec<String>,
     value: String,
-}
-
-impl FeasibleCombination {
-    pub fn get_int(&self, index: usize) -> i64 {
-        self.variables[index].parse().unwrap()
-    }
 }
 
 pub fn call_prism(source: &str, prop: &str) -> Vec<FeasibleCombination> {
