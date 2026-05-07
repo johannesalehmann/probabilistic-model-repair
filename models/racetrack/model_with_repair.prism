@@ -6,7 +6,7 @@ label "Goal" = (x=18&y>=5&y<=10);
 module Scheduler
     phase: [0..2]; // 0: Controller makes choice, 1: Vehicle moves
 
-    [Steer] (phase=0) -> (phase'=repair(max(1, 2)));
+    [Steer] (phase=0) -> (phase'=repair(min(1, 2)));
     [Move] (phase=1) -> (phase'=0);
 endmodule
 
@@ -24,8 +24,8 @@ module Controller
     choice: [0..3]; // 0: left, 1: up, 2: right, 3: down
     counter: [0..50];
 
-    [Steer] (counter<repair(15, grouped(threshold()))) -> (choice'=repair(0, uniform_costs(2.0))) & (counter'=min(counter+1, 50));
-    [Steer] (counter>=repair(15, grouped(threshold()))) -> (choice'=repair(3, uniform_costs(2.0))) & (counter'=min(counter+1, 50));
+    [Steer] (counter<repair(15, grouped(thresh_group()))) -> (choice'=repair(1))&(counter'=min(counter+1, 50));
+    [Steer] (counter>=repair(15, grouped(thresh_group()))) -> (choice'=repair(0))&(counter'=min(counter+1, 50));
 
     [Move] true -> (choice'=0); // Reset choice to reduce state space
 endmodule

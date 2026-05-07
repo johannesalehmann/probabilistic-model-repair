@@ -24,13 +24,14 @@ fn main() {
     repair_collection.add_variables_to_prism(&mut model);
 
     let ref_to_prism = prism_output::VariableReferenceToPrismIndex::from_model(&model);
-    let model = model.to_string();
-    let feasible_combinations = prism::call_prism(&model, &filter_property);
+    let model_string = model.to_string();
+    let feasible_combinations = prism::call_prism(&model_string, &filter_property);
 
     let mut applied_repairs = AppliedRepairCollection::from_feasible_combinations(
         feasible_combinations,
         &ref_to_prism,
         &repair_collection,
+        &model.variable_manager,
     );
     applied_repairs.sort();
 

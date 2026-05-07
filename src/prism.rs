@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::process::Stdio;
 
 pub struct FeasibleCombination {

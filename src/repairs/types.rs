@@ -1,6 +1,9 @@
 use crate::applied_repairs::{Fix, FixType};
 use crate::prism_output::OutputVariableValues;
-use prism_model::{Expression, Identifier, Model, VariableInfo, VariableRange, VariableReference};
+use prism_model::{
+    Displayable, Expression, Identifier, Model, VariableInfo, VariableManager, VariableRange,
+    VariableReference,
+};
 use prism_parser::Span;
 use std::collections::HashMap;
 
@@ -60,8 +63,10 @@ impl RepairCollection {
             RepairKind::FunctionCall {
                 function_type_variable,
                 original_function,
+                args,
             } => RepairKind::FunctionCall {
                 function_type_variable: self.add_variable(function_type_variable),
+                args,
                 original_function,
             },
             RepairKind::Variable {
@@ -153,7 +158,12 @@ pub struct Repair {
 }
 
 impl Repair {
-    pub fn get_cost_and_fixes(&self, fixes: &mut Vec<Fix>, values: &OutputVariableValues) -> f64 {
+    pub fn get_cost_and_fixes(
+        &self,
+        fixes: &mut Vec<Fix>,
+        values: &OutputVariableValues,
+        variable_manager: &VariableManager<Expression<VariableReference, Span>, Span>,
+    ) -> f64 {
         match &self.kind {
             RepairKind::IntegerReplacement {
                 variable,
@@ -179,8 +189,41 @@ impl Repair {
             RepairKind::Comparison { .. } => {
                 todo!()
             }
-            RepairKind::FunctionCall { .. } => {
-                todo!()
+            RepairKind::FunctionCall {
+                function_type_variable,
+                args,
+                original_function,
+            } => {
+                let new_value = values.get_int(*function_type_variable);
+
+                let costs = self
+                    .cost_function
+                    .get_cost(original_function.to_integer(), new_value);
+
+                let fix_type = if original_function.to_integer() == new_value {
+                    FixType::NoChange
+                } else {
+                    FixType::Fixed
+                };
+                let new_name = match new_value {
+                    0 => "min",
+                    1 => "max",
+                    _ => unreachable!(),
+                };
+                fixes.push(Fix::new(
+                    self.original_span.clone(),
+                    format!(
+                        "{}({})",
+                        new_name,
+                        args.iter()
+                            .map(|a| a.displayable(variable_manager).to_string())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                    fix_type,
+                ));
+
+                costs
             }
             RepairKind::Variable { .. } => {
                 todo!()
@@ -201,6 +244,15 @@ pub enum FunctionKind {
     Max,
 }
 
+impl FunctionKind {
+    pub fn to_integer(&self) -> i64 {
+        match self {
+            Self::Min => 0,
+            Self::Max => 1,
+        }
+    }
+}
+
 pub enum RepairKind<V> {
     IntegerReplacement {
         variable: V,
@@ -213,6 +265,7 @@ pub enum RepairKind<V> {
     },
     FunctionCall {
         function_type_variable: V,
+        args: Vec<Expression<VariableReference, Span>>,
         original_function: FunctionKind,
     },
     Variable {
@@ -257,7 +310,9 @@ impl<V> RepairKind<V> {
                 }
             }
             RepairKind::FunctionCall {
-                original_function, ..
+                original_function,
+                args,
+                ..
             } => {
                 if let RepairKind::FunctionCall {
                     function_type_variable,
@@ -267,6 +322,7 @@ impl<V> RepairKind<V> {
                     RepairKind::FunctionCall {
                         function_type_variable: function_type_variable.clone(),
                         original_function,
+                        args,
                     }
                 } else {
                     panic!("Cannot take existing variables from incompatible `RepairKind`.")

@@ -2,7 +2,7 @@ pub use crate::context::PermissibleBounds;
 use crate::context::VariableRanges;
 use crate::repairs::CostFunction;
 use crate::repairs::repair_expression::AchievableBounds::Unknown;
-use crate::repairs::types::{RepairKind, RepairVariable};
+use crate::repairs::types::{FunctionKind, RepairKind, RepairVariable};
 use prism_model::{Expression, Identifier, VariableReference};
 use prism_parser::Span;
 
@@ -41,12 +41,30 @@ impl<'a, 'b> Repairer<'a, 'b> {
                 self.repairs
                     .request_to_reference(parameters.grouped, repair)
             }
+            Expression::Function(name, args, span) => {
+                if name.name == "min" || name.name == "max" {
+                    let original_function = if name.name == "min" {
+                        FunctionKind::Min
+                    } else {
+                        FunctionKind::Max
+                    };
+                    let repair = RepairKind::FunctionCall {
+                        function_type_variable: RepairVariable::Integer { min: 0, max: 1 },
+                        args: args.clone(),
+                        original_function,
+                    };
+                    self.repairs
+                        .request_to_reference(parameters.grouped, repair)
+                } else {
+                    panic!("Can only repair functions of type `min` and `max`.")
+                }
+            }
             _ => panic!("Cannot repair an expression of this type"),
         };
 
-        match repair_kind {
+        match &repair_kind {
             RepairKind::IntegerReplacement { variable, .. } => {
-                let repair = Expression::VarOrConst(variable, span.clone());
+                let repair = Expression::VarOrConst(*variable, span.clone());
                 self.repairs.add_repair(
                     span.clone(),
                     repair_kind,
@@ -59,8 +77,40 @@ impl<'a, 'b> Repairer<'a, 'b> {
             RepairKind::Comparison { .. } => {
                 todo!();
             }
-            RepairKind::FunctionCall { .. } => {
-                todo!();
+            RepairKind::FunctionCall {
+                function_type_variable,
+                args,
+                ..
+            } => {
+                let repair = Expression::Ternary(
+                    Box::new(Expression::Equals(
+                        Box::new(Expression::VarOrConst(
+                            *function_type_variable,
+                            span.clone(),
+                        )),
+                        Box::new(Expression::Int(0, span.clone())),
+                        span.clone(),
+                    )),
+                    Box::new(Expression::Function(
+                        Identifier::new_potentially_reserved("min", span.clone()).unwrap(),
+                        args.clone(),
+                        span.clone(),
+                    )),
+                    Box::new(Expression::Function(
+                        Identifier::new_potentially_reserved("max", span.clone()).unwrap(),
+                        args.clone(),
+                        span.clone(),
+                    )),
+                    span.clone(),
+                );
+                self.repairs.add_repair(
+                    span.clone(),
+                    repair_kind,
+                    parameters
+                        .costs
+                        .unwrap_or_else(|| CostFunction::Uniform { costs: 1.0 }),
+                );
+                repair
             }
             RepairKind::Variable { .. } => {
                 todo!();

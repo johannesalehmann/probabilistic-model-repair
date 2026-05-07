@@ -1,6 +1,7 @@
 use crate::prism::FeasibleCombination;
 use crate::prism_output::{OutputVariableValues, VariableReferenceToPrismIndex};
 use crate::repairs::RepairCollection;
+use prism_model::{Expression, VariableManager, VariableReference};
 use prism_parser::Span;
 
 pub struct Fix {
@@ -34,6 +35,7 @@ impl AppliedRepair {
         feasible_combination: &FeasibleCombination,
         ref_to_prism: &VariableReferenceToPrismIndex,
         repair_collection: &RepairCollection,
+        variable_manager: &VariableManager<Expression<VariableReference, Span>, Span>,
     ) -> Self {
         let mut res = AppliedRepair {
             costs: Vec::new(),
@@ -44,7 +46,7 @@ impl AppliedRepair {
         let values = OutputVariableValues::new(&feasible_combination.variables, ref_to_prism);
 
         for repair in &repair_collection.repairs {
-            let cost = repair.get_cost_and_fixes(&mut res.fixes, &values);
+            let cost = repair.get_cost_and_fixes(&mut res.fixes, &values, variable_manager);
             res.costs.push(cost);
             res.total_cost += cost;
         }
@@ -62,12 +64,18 @@ impl AppliedRepairCollection {
         feasible_combinations: Vec<FeasibleCombination>,
         ref_to_prism: &VariableReferenceToPrismIndex,
         repair_collection: &RepairCollection,
+        variable_manager: &VariableManager<Expression<VariableReference, Span>, Span>,
     ) -> Self {
         Self {
             applied_repairs: feasible_combinations
                 .iter()
                 .map(|f| {
-                    AppliedRepair::from_feasible_combination(f, ref_to_prism, repair_collection)
+                    AppliedRepair::from_feasible_combination(
+                        f,
+                        ref_to_prism,
+                        repair_collection,
+                        variable_manager,
+                    )
                 })
                 .collect(),
         }
