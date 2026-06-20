@@ -1,0 +1,33 @@
+mdp
+
+label "Crash" = !((x>=5&x<=20&y>=5&y<=10)|(x>=5&x<=10&y>=10&y<=20)) & !(x<10 & flag);
+label "Goal" = (x=18&y>=5&y<=10) & flag;
+
+// {fixed}
+module Vehicle
+    //  {hidden}
+    x: [0..20] init 7;
+    // {hidden}
+    y: [0..20] init 18;
+
+    second_zone: bool init false; // Some information that the controller can use (in principle) in order to reduce how much information it needs to keep track of
+
+    [Left] (x>0) -> (x'=x-1) & (second_zone'=x>=10);
+    [Right] (x<20) -> (x'=x+1) & (second_zone'=x>=10);
+    [Up] (y>0) -> (y'=y-1) & (second_zone'=x>=10);
+    [Down] (y<20) -> (y'=y+1) & (second_zone'=x>=10);
+
+    [Left] true -> (x'=18)&(y'=10); // Decoy action to ensure we properly minimise and maximise choices
+    [Right] true -> (x'=18)&(y'=10); // Decoy action to ensure we properly minimise and maximise choices
+    [Up] true -> (x'=18)&(y'=10); // Decoy action to ensure we properly minimise and maximise choices
+    [Down] true -> (x'=18)&(y'=10); // Decoy action to ensure we properly minimise and maximise choices
+endmodule
+
+{must_synchronise=[Up, Down, Left, Right]}
+module Controller
+    flag: bool init false;
+    [Up] (false) -> true;
+    [Down] (false) -> true;
+    [Left] (false) -> true;
+    [Right] (false) -> true;
+endmodule

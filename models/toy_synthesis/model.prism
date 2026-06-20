@@ -1,0 +1,19 @@
+mdp
+
+label "Goal" = flag & x=2;
+
+{fixed}
+module Main
+    {hidden}
+    x: [0..2] init 0;
+
+    [Alpha] (x=0) -> (x'=1);
+    [Alpha] (x=0) -> (x'=2); // Main could reach goal by playing alpha, but main does not want to do that
+    [Beta] (x=0) -> (x'=2);
+
+    [Spin] (x>0) -> true;
+endmodule
+
+module Controller
+    flag: bool init false;
+endmodule

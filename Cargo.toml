@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-prism-parser = {git = "https://github.com/johannesalehmann/SVaBResp"}
-prism-model = {git = "https://github.com/johannesalehmann/SVaBResp"}
+prism-parser = { git = "https://github.com/johannesalehmann/tiny-pmc" }
+prism-model = { git = "https://github.com/johannesalehmann/tiny-pmc" }
+probabilistic-properties = { git = "https://github.com/johannesalehmann/tiny-pmc" }

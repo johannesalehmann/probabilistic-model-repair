@@ -1,66 +1,121 @@
-mod applied_repairs;
-mod context;
-mod html_engine;
-mod input;
-mod prism;
-mod prism_output;
-mod repairs;
+use crate::repair_graph::PropertyCollection;
+use crate::repair_problem::{RepairProblemDescription, StepResult};
+use prism_parser::ErrorWithSource;
 
-use crate::applied_repairs::{AppliedRepairCollection, FixType};
-use crate::html_engine::{RepairKind, RepairedSpan};
+mod model_manipulation;
+mod preprocessing;
+mod prism_runner;
+mod repair_graph;
+mod repair_problem;
+mod task_graph;
+mod tasks;
 
 fn main() {
-    let model_with_context = input::get_model("models/racetrack/model");
-    let filter_property = format!(
-        "\"Filtered\": filter(print, {}, \"init\");",
-        model_with_context.specification
-    );
-    let model_source = model_with_context.model_source;
-    let mut model = model_with_context.model;
+    let sources = [(
+        "models/toy_synthesis/model.prism",
+        "models/toy_synthesis/model.props",
+    )];
 
-    let variable_ranges = context::VariableRanges::from_model(&model);
-
-    let mut repair_collection = repairs::wire_up_repairs(&mut model, &variable_ranges);
-    repair_collection.add_variables_to_prism(&mut model);
-
-    let ref_to_prism = prism_output::VariableReferenceToPrismIndex::from_model(&model);
-    let model_string = model.to_string();
-    let feasible_combinations = prism::call_prism(&model_string, &filter_property);
-
-    let mut applied_repairs = AppliedRepairCollection::from_feasible_combinations(
-        feasible_combinations,
-        &ref_to_prism,
-        &repair_collection,
-        &model.variable_manager,
-    );
-    applied_repairs.sort();
-
-    let mut repair_document = html_engine::RepairOutput::new(model_source.clone());
-    let mut base_tab = html_engine::Repair::new_base();
-    for repair in &repair_collection.repairs {
-        base_tab.add_span(RepairedSpan::new(
-            repair.original_span.clone(),
-            model_source[repair.original_span.into_range()].to_string(),
-            RepairKind::ToRepair,
-        ))
-    }
-    repair_document.add_repair(base_tab);
-
-    for applied_repair in applied_repairs.applied_repairs {
-        let mut repair_tab = html_engine::Repair::new_repair(applied_repair.total_cost);
-        for fix in applied_repair.fixes {
-            repair_tab.add_span(RepairedSpan::new(
-                fix.location,
-                fix.replace_by,
-                match fix.fix_type {
-                    FixType::Fixed => RepairKind::Fix,
-                    FixType::NoChange => RepairKind::Unchanged,
-                },
-            ))
+    for (model, props) in sources {
+        match get_description(model, props) {
+            Ok(description) => {
+                let mut task = description.build();
+                loop {
+                    match task.step() {
+                        StepResult::Done => {
+                            println!("Repair completed successfully");
+                            break;
+                        }
+                        StepResult::MoreToDo => {}
+                        StepResult::NoMoreTasks => {
+                            println!("No more executable tasks");
+                            break;
+                        }
+                    }
+                }
+            }
+            Err(err) => {
+                err.print_error();
+            }
         }
-
-        repair_document.add_repair(repair_tab);
     }
+    println!("Repair tool finished");
+}
 
-    std::fs::write("repairs.html", repair_document.to_html()).unwrap();
+fn get_description<'a, 'b, 'c>(
+    model: &'b str,
+    props: &'c str,
+) -> Result<RepairProblemDescription, DescriptionCreationError<'a>> {
+    let model_source =
+        std::fs::read_to_string(model).map_err(DescriptionCreationError::ModelFileIoError)?;
+    let properties_source =
+        std::fs::read_to_string(props).map_err(DescriptionCreationError::PropertyFileIoError)?;
+    let properties = properties_source
+        .trim()
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>();
+    let cloned_source = model_source.clone();
+    let result = prism_parser::parse_model_and_props(model_source.as_str(), &properties[..])
+        .all_ok()
+        .map_err(|errors| {
+            let errors = errors
+                .into_iter()
+                .map(|e| ErrorWithSource {
+                    source: e.source,
+                    error: e.error.into_owned(),
+                })
+                .collect();
+            DescriptionCreationError::ParserErrors {
+                model_source: cloned_source,
+                property_sources: properties.iter().map(|p| p.to_string()).collect(),
+                errors,
+            }
+        })?;
+    let property_collection = PropertyCollection::new(result.properties);
+    Ok(RepairProblemDescription::new(
+        result.model,
+        property_collection,
+    ))
+}
+
+enum DescriptionCreationError<'a> {
+    ModelFileIoError(std::io::Error),
+    PropertyFileIoError(std::io::Error),
+    ParserErrors {
+        model_source: String,
+        property_sources: Vec<String>,
+        errors: Vec<ErrorWithSource<'a>>,
+    },
+}
+
+impl<'a> DescriptionCreationError<'a> {
+    pub fn print_error(&self) {
+        match self {
+            DescriptionCreationError::ModelFileIoError(io) => {
+                println!("Error reading model file: {}", io)
+            }
+            DescriptionCreationError::PropertyFileIoError(io) => {
+                println!("Error reading property file: {}", io)
+            }
+            DescriptionCreationError::ParserErrors {
+                model_source,
+                property_sources: error_sources,
+                errors,
+            } => {
+                for err in errors {
+                    let (name, source) = match err.source {
+                        prism_parser::ErrorSource::Model => {
+                            ("model file".to_string(), model_source.as_str())
+                        }
+                        prism_parser::ErrorSource::Property { index } => {
+                            (format!("property {index}"), error_sources[index].as_str())
+                        }
+                    };
+                    err.error.clone().print(Some(&name), source)
+                }
+            }
+        }
+    }
 }

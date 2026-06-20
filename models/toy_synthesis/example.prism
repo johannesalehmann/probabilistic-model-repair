@@ -1,0 +1,36 @@
+smg
+
+global phase: [0..1] init 0;
+
+label "Goal" = flag & x=2;
+
+player Environment
+    Main, [AlphaFail], [AlphaWin], [Beta]
+endplayer
+
+player Repair
+    Controller, [Choose_Alpha_false], [Choose_Alpha_true], [Choose_Beta_false], [Choose_Beta_true]
+endplayer
+
+module Main
+    x: [0..2] init 0;
+
+    [AlphaFail] (choice=0 & x=0 & phase=1) -> (x'=1) & (phase'=0);
+    [AlphaWin] (choice=0 & x=0 & phase=1) -> (x'=2) & (phase'=0); // Main could reach goal by playing alpha, but main does not want to do that
+    [Beta] (choice=1 & x=0 & phase=1) -> (x'=2) & (phase'=0);
+
+    [Spin] (x>0) -> true;
+endmodule
+
+module Controller
+    flag: bool init false;
+
+    choice: [0..1] init 0;
+
+    // TODO: The controller needs to take the guards of the actions into account
+
+    [Choose_Alpha_false] (phase=0) -> (choice'=0) & (flag'=false) & (phase'=1);
+    [Choose_Alpha_true] (phase=0) -> (choice'=0) & (flag'=true) & (phase'=1);
+    [Choose_Beta_false] (phase=0) -> (choice'=1) & (flag'=false) & (phase'=1);
+    [Choose_Beta_true] (phase=0) -> (choice'=1) & (flag'=true) & (phase'=1);
+endmodule

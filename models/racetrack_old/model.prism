@@ -6,7 +6,7 @@ label "Goal" = (x=18&y>=5&y<=10);
 module Scheduler
     phase: [0..2]; // 0: Controller makes choice, 1: Vehicle moves
 
-    [Steer] (phase=0) -> (phase'=repair(max(1, 2)));
+    [Steer] (phase=0) -> (phase'=1);
     [Move] (phase=1) -> (phase'=0);
 endmodule
 
