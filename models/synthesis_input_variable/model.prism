@@ -1,0 +1,17 @@
+mdp
+
+{fixed}
+module main
+    x: [0..50] init 0;
+    fail: bool init false;
+
+    [Alpha] (mod(x, 2)=0 & x <= 48) -> 0.5: (x'=x+1) + 0.5: (x'=x+2);
+    [Alpha] (mod(x, 2)=1) -> (fail'=true);
+
+    [Beta] (mod(x, 2)=0) -> (fail'=true);
+    [Beta] (mod(x, 2)=1 & x <= 48) -> 0.5: (x'=x+1) + 0.5: (x'=x+2);
+
+    [Gamma] (x=48 | x=49) -> (x'=50);
+
+    [Delta] (x=50) -> true;
+endmodule

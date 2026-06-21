@@ -41,14 +41,6 @@ pub fn check_properties(model: &PrismModel, properties: &PropertyCollection) -> 
                     _ => (),
                 }
             }
-            match p {
-                probabilistic_properties::Query::ProbabilityValue { .. } => {}
-                probabilistic_properties::Query::StateFormula(_) => {}
-                probabilistic_properties::Query::RewardBound { .. } => {}
-                probabilistic_properties::Query::RewardValue { .. } => {}
-                probabilistic_properties::Query::TimeBound { .. } => {}
-                probabilistic_properties::Query::TimeValue { .. } => {}
-            }
             p.map_i(&mut |i: prism_model::Expression| {
                 i.displayable(&model.variable_manager).to_string()
             })
@@ -88,9 +80,17 @@ pub fn check_properties(model: &PrismModel, properties: &PropertyCollection) -> 
         Err(err) => panic!("`prism` output is not valid utf8: {}", err),
     };
 
-    let results = stdout
+    let mut results = stdout
         .split("---------------------------------------------------------------------")
         .collect::<Vec<_>>();
+    // If there are warnings, PRISM produces an extra "Note, There were n warnings during computation" section, which we remove in the following"
+    if results
+        .last()
+        .map(|r| r.trim().starts_with("Note: There"))
+        .unwrap_or(false)
+    {
+        results.remove(results.len() - 1);
+    }
     if results.len() != properties.properties.len() + 1 {
         panic!(
             "PRISM output did not have the right number of sections delineated by dashed lines (expected {}, found {})\n\n:{stdout}",

@@ -42,6 +42,7 @@ impl RepairGraphNode {
     }
 }
 
+#[derive(Clone)]
 pub struct PropertyCollection {
     pub properties: Vec<PrismProperty>,
 }

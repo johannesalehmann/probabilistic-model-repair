@@ -26,32 +26,41 @@ pub struct RepairProblem {
 
 impl RepairProblem {
     pub fn step(&mut self) -> StepResult {
-        if self.graph.nodes.len() > 1 {
-            panic!(
-                "The scheduler does not yet know how to decide between multiple nodes in the graph"
-            );
-        }
-        if let Some(task) = self.graph.nodes[0].tasks.get_executable() {
-            let changes = self.graph.nodes[0].execute_task(task);
-            for change in changes {
-                match change {
-                    ExternalChange::CreateRepair { model, properties } => {
-                        self.graph
-                            .nodes
-                            .push(RepairGraphNode::new(model, properties));
+        let mut more_to_do = false;
+        for i in self.graph.nodes.len() - 1..self.graph.nodes.len() {
+            if let Some(task) = self.graph.nodes[i].tasks.get_executable() {
+                let changes = self.graph.nodes[i].execute_task(task);
+                for change in changes {
+                    match change {
+                        ExternalChange::CreateRepair { model, properties } => {
+                            self.graph
+                                .nodes
+                                .push(RepairGraphNode::new(model, properties));
+                        }
+                        ExternalChange::AnnounceCompletion => {
+                            return StepResult::Done {
+                                model: self.graph.nodes[i].model.clone(),
+                                properties: self.graph.nodes[i].properties.clone(),
+                            };
+                        }
                     }
-                    ExternalChange::AnnounceCompletion => return StepResult::Done,
                 }
+                more_to_do = true;
             }
-            StepResult::MoreToDo
-        } else {
-            StepResult::NoMoreTasks
+        }
+
+        match more_to_do {
+            true => StepResult::MoreToDo,
+            false => StepResult::NoMoreTasks,
         }
     }
 }
 
 pub enum StepResult {
-    Done,
+    Done {
+        model: PrismModel,
+        properties: PropertyCollection,
+    },
     MoreToDo,
     NoMoreTasks,
 }

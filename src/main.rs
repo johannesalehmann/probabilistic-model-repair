@@ -11,10 +11,16 @@ mod task_graph;
 mod tasks;
 
 fn main() {
-    let sources = [(
-        "models/toy_synthesis/model.prism",
-        "models/toy_synthesis/model.props",
-    )];
+    let sources = [
+        // (
+        // "models/toy_synthesis/model.prism",
+        // "models/toy_synthesis/model.props",
+        //),
+        (
+            "models/synthesis_input_variable/model.prism",
+            "models/synthesis_input_variable/model.props",
+        ),
+    ];
 
     for (model, props) in sources {
         match get_description(model, props) {
@@ -22,8 +28,11 @@ fn main() {
                 let mut task = description.build();
                 loop {
                     match task.step() {
-                        StepResult::Done => {
-                            println!("Repair completed successfully");
+                        StepResult::Done { model, properties } => {
+                            std::fs::write("result.prism", model.to_string()).unwrap();
+                            println!(
+                                "Repair completed successfully. Final model written to `result.prism`."
+                            );
                             break;
                         }
                         StepResult::MoreToDo => {}
