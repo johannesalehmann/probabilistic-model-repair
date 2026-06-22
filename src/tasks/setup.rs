@@ -3,6 +3,7 @@ use crate::task_graph::{DependencyOutputs, Modifications, Task};
 use crate::tasks::ModelCheckingTask;
 use crate::tasks::repairs::SetupRepairEnginesTask;
 use std::any::Any;
+use std::path::Path;
 
 pub struct SetupTask {}
 
@@ -23,6 +24,7 @@ impl Task for SetupTask {
         own_index: usize,
         dependency_outputs: DependencyOutputs,
         modifications: &mut Modifications,
+        temp_directory: &Path,
     ) -> Box<dyn Any> {
         let _ = (model, properties, dependency_outputs);
         let checking_task =

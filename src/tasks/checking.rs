@@ -2,6 +2,7 @@ use crate::prism_runner::check_properties;
 use crate::repair_graph::{CheckingResult, PrismModel, PropertyCollection};
 use crate::task_graph::{DependencyOutputs, Modifications, Task};
 use std::any::Any;
+use std::path::Path;
 
 pub struct ModelCheckingTask {}
 
@@ -23,8 +24,9 @@ impl Task for ModelCheckingTask {
         own_index: usize,
         dependency_outputs: DependencyOutputs,
         modifications: &mut Modifications,
+        temp_directory: &Path,
     ) -> Box<dyn Any> {
-        let results = check_properties(model, properties);
+        let results = check_properties(model, properties, temp_directory);
         let mut all_bools_satisfied = true;
         for result in &results.results {
             match result {

@@ -1,4 +1,5 @@
 use crate::task_graph::{ExternalChange, TaskGraph};
+use std::path::Path;
 
 pub type PrismModel = prism_model::Model;
 type PrismProperty = probabilistic_properties::Query<
@@ -37,8 +38,9 @@ impl RepairGraphNode {
         }
     }
 
-    pub fn execute_task(&mut self, index: usize) -> Vec<ExternalChange> {
-        self.tasks.execute(index, &self.model, &self.properties)
+    pub fn execute_task(&mut self, index: usize, temp_directory: &Path) -> Vec<ExternalChange> {
+        self.tasks
+            .execute(index, &self.model, &self.properties, temp_directory)
     }
 }
 

@@ -1,6 +1,7 @@
 use crate::repair_graph::PropertyCollection;
 use crate::repair_problem::{RepairProblemDescription, StepResult};
 use prism_parser::ErrorWithSource;
+use std::path::{Path, PathBuf};
 
 mod model_manipulation;
 mod preprocessing;
@@ -10,28 +11,85 @@ mod repair_problem;
 mod task_graph;
 mod tasks;
 
+struct Paths {
+    result: PathBuf,
+    temp: PathBuf,
+    model: String,
+    properties: String,
+}
+
+impl Paths {
+    fn search_directory(path: &str) -> Self {
+        // TODO: Properly handle path concatenation
+        let files = std::fs::read_dir(path)
+            .unwrap_or_else(|e| panic!("Could not read directory {}: {}", path, e));
+
+        let (mut model, mut properties) = (None, None);
+
+        for file in files {
+            let file = file.expect("Could not read file while exploring directory");
+            if file.file_name() == "model.prism"
+                || (model.is_none() && file.file_name().to_str().unwrap().ends_with(".prism"))
+            {
+                model = Some(file.path().to_str().unwrap().to_string());
+            }
+            if file.file_name() == "model.props"
+                || (model.is_none() && file.file_name().to_str().unwrap().ends_with(".props"))
+            {
+                properties = Some(file.path().to_str().unwrap().to_string());
+            }
+        }
+
+        if model.is_none() {
+            panic!("Could not find model file (ending with suffix `.prism`) in directory {path}");
+        }
+        if properties.is_none() {
+            panic!(
+                "Could not find property file (ending with suffix `.props`) in directory {path}"
+            );
+        }
+
+        let temp = Path::new(path).join("temp");
+        if std::fs::exists(&temp).unwrap() {
+            std::fs::remove_dir_all(&temp).unwrap();
+        }
+        std::fs::create_dir(&temp).unwrap();
+
+        let result = Path::new(path).join("result.prism");
+
+        Self {
+            temp,
+            model: model.unwrap(),
+            properties: properties.unwrap(),
+            result,
+        }
+    }
+}
+
 fn main() {
     let sources = [
+        Paths::search_directory("models/synthesis_input_variable/"),
         // (
         // "models/toy_synthesis/model.prism",
         // "models/toy_synthesis/model.props",
         //),
-        (
-            "models/synthesis_input_variable/model.prism",
-            "models/synthesis_input_variable/model.props",
-        ),
+        // (
+        //     "models/synthesis_input_variable/model.prism",
+        //     "models/synthesis_input_variable/model.props",
+        // )
     ];
 
-    for (model, props) in sources {
-        match get_description(model, props) {
+    for path in sources {
+        match get_description(&path) {
             Ok(description) => {
                 let mut task = description.build();
                 loop {
                     match task.step() {
                         StepResult::Done { model, properties } => {
-                            std::fs::write("result.prism", model.to_string()).unwrap();
+                            let target = std::fs::write(&path.result, model.to_string()).unwrap();
                             println!(
-                                "Repair completed successfully. Final model written to `result.prism`."
+                                "Repair completed successfully. Final model written to `{}`.",
+                                path.result.to_str().unwrap()
                             );
                             break;
                         }
@@ -51,14 +109,13 @@ fn main() {
     println!("Repair tool finished");
 }
 
-fn get_description<'a, 'b, 'c>(
-    model: &'b str,
-    props: &'c str,
+fn get_description<'a>(
+    paths: &Paths,
 ) -> Result<RepairProblemDescription, DescriptionCreationError<'a>> {
-    let model_source =
-        std::fs::read_to_string(model).map_err(DescriptionCreationError::ModelFileIoError)?;
-    let properties_source =
-        std::fs::read_to_string(props).map_err(DescriptionCreationError::PropertyFileIoError)?;
+    let model_source = std::fs::read_to_string(&paths.model)
+        .map_err(DescriptionCreationError::ModelFileIoError)?;
+    let properties_source = std::fs::read_to_string(&paths.properties)
+        .map_err(DescriptionCreationError::PropertyFileIoError)?;
     let properties = properties_source
         .trim()
         .lines()
@@ -86,6 +143,7 @@ fn get_description<'a, 'b, 'c>(
     Ok(RepairProblemDescription::new(
         result.model,
         property_collection,
+        paths.temp.clone(),
     ))
 }
 

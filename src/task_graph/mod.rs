@@ -1,5 +1,6 @@
 use crate::repair_graph::{PrismModel, PropertyCollection};
 use std::any::Any;
+use std::path::Path;
 
 pub struct TaskGraph {
     tasks: Vec<TaskGraphNode>,
@@ -33,6 +34,7 @@ impl TaskGraph {
         index: usize,
         model: &PrismModel,
         properties: &PropertyCollection,
+        temp_directory: &Path,
     ) -> Vec<ExternalChange> {
         println!(
             "Executing task {} ({})",
@@ -56,6 +58,7 @@ impl TaskGraph {
             index,
             dependency_outputs,
             &mut modifications,
+            temp_directory,
         );
         self.outputs[index] = Some(output);
 
@@ -86,6 +89,7 @@ pub trait Task {
         own_index: usize,
         dependency_outputs: DependencyOutputs,
         modifications: &mut Modifications,
+        temp_directory: &Path,
     ) -> Box<dyn Any>;
 }
 

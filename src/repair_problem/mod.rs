@@ -1,14 +1,21 @@
 use crate::repair_graph::{PrismModel, PropertyCollection, RepairGraph, RepairGraphNode};
 use crate::task_graph::ExternalChange;
+use std::env::temp_dir;
+use std::path::{Path, PathBuf};
 
 pub struct RepairProblemDescription {
     model: PrismModel,
     properties: PropertyCollection,
+    temp_directory: PathBuf,
 }
 
 impl RepairProblemDescription {
-    pub fn new(model: PrismModel, properties: PropertyCollection) -> Self {
-        Self { model, properties }
+    pub fn new(model: PrismModel, properties: PropertyCollection, temp_directory: PathBuf) -> Self {
+        Self {
+            model,
+            properties,
+            temp_directory,
+        }
     }
 
     pub fn build(mut self) -> RepairProblem {
@@ -16,12 +23,14 @@ impl RepairProblemDescription {
 
         RepairProblem {
             graph: RepairGraph::with_initial_node(self.model, self.properties),
+            temp_directory: self.temp_directory,
         }
     }
 }
 
 pub struct RepairProblem {
     graph: RepairGraph,
+    temp_directory: PathBuf,
 }
 
 impl RepairProblem {
@@ -29,7 +38,7 @@ impl RepairProblem {
         let mut more_to_do = false;
         for i in self.graph.nodes.len() - 1..self.graph.nodes.len() {
             if let Some(task) = self.graph.nodes[i].tasks.get_executable() {
-                let changes = self.graph.nodes[i].execute_task(task);
+                let changes = self.graph.nodes[i].execute_task(task, &self.temp_directory);
                 for change in changes {
                     match change {
                         ExternalChange::CreateRepair { model, properties } => {

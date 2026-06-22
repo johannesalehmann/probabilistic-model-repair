@@ -1,6 +1,7 @@
 use crate::repair_graph::{PrismModel, PropertyCollection};
 use crate::task_graph::{DependencyOutputs, Modifications, Task};
 use std::any::Any;
+use std::path::Path;
 
 mod syntactic_replacement;
 mod synthesis;
@@ -24,6 +25,7 @@ impl Task for SetupRepairEnginesTask {
         own_index: usize,
         dependency_outputs: DependencyOutputs,
         modifications: &mut Modifications,
+        temp_directory: &Path,
     ) -> Box<dyn Any> {
         modifications.create_task(Box::new(synthesis::SetupTask::new()), vec![own_index]);
 

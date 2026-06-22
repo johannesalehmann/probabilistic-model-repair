@@ -1,9 +1,14 @@
 use crate::repair_graph::{CheckingResult, CheckingResults, PrismModel, PropertyCollection};
 use prism_model::Displayable;
 use probabilistic_properties::{BoundOperator, NonDeterminismKind, StateFormula};
+use std::path::Path;
 use std::process::Stdio;
 
-pub fn check_properties(model: &PrismModel, properties: &PropertyCollection) -> CheckingResults {
+pub fn check_properties(
+    model: &PrismModel,
+    properties: &PropertyCollection,
+    temp_directory: &Path,
+) -> CheckingResults {
     let model_source = model.to_string();
     let property_sources = properties
         .properties
@@ -56,10 +61,10 @@ pub fn check_properties(model: &PrismModel, properties: &PropertyCollection) -> 
         .collect::<Vec<_>>()
         .join(";\n");
 
-    let file_name = "temp2.prism";
-    let prop_name = "temp2.props";
-    std::fs::write(file_name, model_source).expect("Failed to write temporary file");
-    std::fs::write(prop_name, property_sources).expect("Failed to write temporary file");
+    let file_name = temp_directory.join("checking_task_temp.prism");
+    let prop_name = temp_directory.join("checking_task_temp.props");
+    std::fs::write(&file_name, model_source).expect("Failed to write temporary file");
+    std::fs::write(&prop_name, property_sources).expect("Failed to write temporary file");
 
     let process = match std::process::Command::new("prism")
         .args(&[file_name, prop_name])

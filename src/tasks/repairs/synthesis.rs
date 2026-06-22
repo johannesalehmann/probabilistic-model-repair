@@ -7,7 +7,9 @@ use prism_model::{
 use probabilistic_properties::{BoundOperator, NonDeterminismKind, StateFormula};
 use std::any::Any;
 use std::collections::HashMap;
+use std::ffi::OsStr;
 use std::fmt::{Display, Formatter};
+use std::path::Path;
 use std::process::Stdio;
 
 pub struct SetupTask {}
@@ -30,6 +32,7 @@ impl Task for SetupTask {
         own_index: usize,
         dependency_outputs: DependencyOutputs,
         modifications: &mut Modifications,
+        temp_directory: &Path,
     ) -> Box<dyn Any> {
         for (index, module) in model.modules.iter().enumerate() {
             if module.attributes.is_flag_set("repairable") {
@@ -86,6 +89,7 @@ impl Task for RepairTask {
         own_index: usize,
         dependency_outputs: DependencyOutputs,
         modifications: &mut Modifications,
+        temp_directory: &Path,
     ) -> Box<dyn Any> {
         let interface = ModuleInterface::from_model(model, self.module);
         // interface.print(&model.variable_manager);
@@ -283,7 +287,10 @@ impl Task for RepairTask {
             environment_controlled.join(", ")
         );
 
-        std::fs::write("temp_game.prism", game_source).unwrap();
+        let game_file_name = temp_directory.join("synthesis_game.prism");
+        let game_props_name = temp_directory.join("synthesis_game.props");
+
+        std::fs::write(&game_file_name, game_source).unwrap();
 
         let mut game_properties = Vec::new();
         for property in &properties.properties {
@@ -327,16 +334,20 @@ impl Task for RepairTask {
                     .map_e(&mut |e| e.displayable(&model.variable_manager).to_string())
             ));
         }
-        std::fs::write("temp_game.props", game_properties.join(";\n")).unwrap();
+        std::fs::write(&game_props_name, game_properties.join(";\n")).unwrap();
 
+        let strategy_file_name = temp_directory.join("synthesis_game.strat");
+        let states_file = temp_directory.join("synthesis_game.sta");
+
+        let strategy_option = format!("{}:type=induced", strategy_file_name.to_str().unwrap());
         let process = match std::process::Command::new("prism-games")
             .args(&[
-                "temp_game.prism",
-                "temp_game.props",
-                "-exportstrat",
-                "temp_game.strat:type=induced",
-                "-exportmodel",
-                "temp_game.sta",
+                game_file_name.as_os_str(),
+                game_props_name.as_os_str(),
+                OsStr::new("-exportstrat"),
+                OsStr::new(&strategy_option),
+                OsStr::new("-exportmodel"),
+                states_file.as_os_str(),
             ])
             .stdout(Stdio::piped())
             .spawn()
@@ -363,9 +374,9 @@ impl Task for RepairTask {
         }
 
         if was_true {
-            let states = StateFile::from_sta(&std::fs::read_to_string("temp_game.sta").unwrap());
+            let states = StateFile::from_sta(&std::fs::read_to_string(states_file).unwrap());
             let induced_game =
-                InducedGame::from_strat(&std::fs::read_to_string("temp_game.strat").unwrap());
+                InducedGame::from_strat(&std::fs::read_to_string(strategy_file_name).unwrap());
 
             let mut visible_variable_combinations = VisibleVariableCollector::new(
                 &interface.inputs.visible_variables,
