@@ -1,4 +1,9 @@
+use iced::advanced::text::highlighter::PlainText;
+use iced::futures::{AsyncBufReadExt, StreamExt};
+use iced::widget::text::Highlighter;
+use iced::widget::{TextEditor, text_editor};
 use iced::{Element, Task};
+use std::fmt::Debug;
 use tabbed_workspace::TabbedWorkspace;
 
 fn main() {
@@ -12,9 +17,9 @@ struct Window {
 impl Default for Window {
     fn default() -> Self {
         let mut workspace = TabbedWorkspace::new();
-        workspace.open_window(TabWindow::CodeWindow);
-        workspace.open_window(TabWindow::CodeWindow);
-        workspace.open_window(TabWindow::CodeWindow);
+        workspace.open_window(TabWindow::code_window());
+        workspace.open_window(TabWindow::code_window());
+        workspace.open_window(TabWindow::code_window());
         workspace.open_window(TabWindow::MdpExplorer);
         workspace.open_window(TabWindow::RepairGraph);
 
@@ -38,27 +43,64 @@ impl Window {
 }
 
 enum Message {
-    Workspace(tabbed_workspace::Message),
+    Workspace(tabbed_workspace::Message<TabAction>),
 }
 
 enum TabWindow {
-    CodeWindow,
+    CodeWindow { content: text_editor::Content },
     RepairGraph,
     MdpExplorer,
 }
 
+impl TabWindow {
+    pub fn code_window() -> Self {
+        Self::CodeWindow {
+            content: text_editor::Content::new(),
+        }
+    }
+}
+
+#[derive(Clone)]
+enum TabAction {
+    EditCode(text_editor::Action),
+}
+
 impl tabbed_workspace::Window for TabWindow {
+    type TabAction = TabAction;
+
     fn title(&self) -> String {
         match self {
-            TabWindow::CodeWindow => "Code".to_string(),
+            TabWindow::CodeWindow { content } => {
+                if let Some(first_line) = content.line(0)
+                    && !first_line.text.is_empty()
+                {
+                    first_line.text.to_string()
+                } else {
+                    "empty document".to_string()
+                }
+            }
             TabWindow::RepairGraph => "Repair graph".to_string(),
             TabWindow::MdpExplorer => "MDP".to_string(),
         }
     }
 
-    fn view<'a, Msg: 'a>(&'a self) -> Element<'a, Msg> {
+    fn update(&mut self, action: TabAction) {
+        match action {
+            TabAction::EditCode(action) => {
+                if let TabWindow::CodeWindow { content } = self {
+                    content.perform(action)
+                } else {
+                    panic!("Tried to perform edit action on incorrect tab type");
+                }
+            }
+        }
+    }
+
+    fn view<'a>(&'a self) -> Element<'a, TabAction> {
         match self {
-            TabWindow::CodeWindow => iced::widget::text! {"Code window"}.into(),
+            TabWindow::CodeWindow { content } => TextEditor::new(content)
+                .on_action(TabAction::EditCode)
+                .into(),
             TabWindow::RepairGraph => iced::widget::text! {"Repair graph"}.into(),
             TabWindow::MdpExplorer => iced::widget::text! {"Mdp explorer"}.into(),
         }

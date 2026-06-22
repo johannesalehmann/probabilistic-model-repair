@@ -18,7 +18,6 @@ impl<W: Window> TabbedWorkspace<W> {
         let (default_window, default_id) = TabView::new();
         let (pane_grid_state, selected_window) = pane_grid::State::new(default_window);
         let mut id_to_pane = HashMap::new();
-        println!("Initial id: {:?}", default_id);
         id_to_pane.insert(default_id, selected_window);
         Self {
             pane_grid_state,
@@ -27,7 +26,7 @@ impl<W: Window> TabbedWorkspace<W> {
         }
     }
 
-    pub fn update(&mut self, message: Message) -> Task<Message> {
+    pub fn update(&mut self, message: Message<W::TabAction>) -> Task<Message<W::TabAction>> {
         match message {
             Message::PaneGridResized(event) => {
                 self.pane_grid_state.resize(event.split, event.ratio);
@@ -44,7 +43,6 @@ impl<W: Window> TabbedWorkspace<W> {
             }
             Message::Split { pane, axis } => {
                 let (new_pane, new_id) = TabView::new();
-                println!("Split a pane. New id: {:?}", new_id.clone());
                 let (pane_id, _) = self.pane_grid_state.split(axis, pane, new_pane).unwrap();
                 self.id_to_pane.insert(new_id, pane_id);
             }
@@ -92,11 +90,20 @@ impl<W: Window> TabbedWorkspace<W> {
                     println!("Multiple drop zones: {:?}", zones);
                 }
             }
+            Message::TabAction {
+                pane,
+                tab_index,
+                action,
+            } => {
+                let pane = self.pane_grid_state.get_mut(pane).unwrap();
+                let tab = &mut pane.tabs[tab_index];
+                tab.update(action);
+            }
         }
         Task::none()
     }
 
-    pub fn view<'a, Msg: 'a, F: 'a + Clone + Fn(Message) -> Msg>(
+    pub fn view<'a, Msg: 'a, F: 'a + Clone + Fn(Message<W::TabAction>) -> Msg>(
         &'a self,
         emit_message: F,
     ) -> Element<'a, Msg> {
@@ -120,13 +127,14 @@ impl<W: Window> TabbedWorkspace<W> {
 }
 
 pub trait Window {
+    type TabAction: Clone + Send + 'static;
     fn title(&self) -> String;
-
-    fn view<'a, Msg: 'a>(&'a self) -> Element<'a, Msg>;
+    fn update(&mut self, action: Self::TabAction);
+    fn view<'a>(&'a self) -> Element<'a, Self::TabAction>;
 }
 
 #[derive(Clone)]
-pub enum Message {
+pub enum Message<TabAction> {
     PaneGridResized(pane_grid::ResizeEvent),
     SelectTab {
         pane: Pane,
@@ -152,6 +160,12 @@ pub enum Message {
         tab_index: usize,
         zones: Vec<(iced::advanced::widget::Id, iced::Rectangle)>,
     },
+
+    TabAction {
+        pane: Pane,
+        tab_index: usize,
+        action: TabAction,
+    },
 }
 
 struct TabView<W: Window> {
@@ -173,7 +187,7 @@ impl<W: Window> TabView<W> {
         )
     }
 
-    pub fn view<'a>(&'a self, pane: Pane) -> Element<'a, Message> {
+    pub fn view<'a>(&'a self, pane: Pane) -> Element<'a, Message<W::TabAction>> {
         let mut tab_bar = Row::new();
         for (tab_index, tab) in self.tabs.iter().enumerate() {
             let header = Container::new(row!(
@@ -212,7 +226,11 @@ impl<W: Window> TabView<W> {
             text!("This tab view is empty").into()
         } else {
             let selected = &self.tabs[self.selected];
-            selected.view()
+            selected.view().map(move |action| Message::TabAction {
+                pane,
+                tab_index: self.selected,
+                action,
+            })
         };
 
         let window = container(column![tab_bar.wrap(), main_window]).id(self.id.clone());
