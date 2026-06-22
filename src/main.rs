@@ -67,19 +67,10 @@ impl Paths {
 }
 
 fn main() {
-    let sources = [
-        Paths::search_directory("models/synthesis_input_variable/"),
-        // (
-        // "models/toy_synthesis/model.prism",
-        // "models/toy_synthesis/model.props",
-        //),
-        // (
-        //     "models/synthesis_input_variable/model.prism",
-        //     "models/synthesis_input_variable/model.props",
-        // )
-    ];
+    let sources = [Paths::search_directory("models/synthesis_input_variable/")];
 
     for path in sources {
+        println!("Repairing model `{}`", path.model);
         match get_description(&path) {
             Ok(description) => {
                 let mut task = description.build();

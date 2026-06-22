@@ -1,1 +1,1 @@
-Pmax=? [!"Crash" U "Goal"]
+Pmin >= 0.8 [!"Crash" U "Goal"]

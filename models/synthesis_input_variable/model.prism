@@ -2,6 +2,7 @@ mdp
 
 {fixed}
 module main
+    {hidden}
     x: [0..50] init 0;
     fail: bool init false;
 

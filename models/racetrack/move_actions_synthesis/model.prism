@@ -3,11 +3,11 @@ mdp
 label "Crash" = !((x>=5&x<=20&y>=5&y<=10)|(x>=5&x<=10&y>=10&y<=20)) & !(x<10 & flag);
 label "Goal" = (x=18&y>=5&y<=10) & flag;
 
-// {fixed}
+{fixed}
 module Vehicle
-    //  {hidden}
+    {hidden}
     x: [0..20] init 7;
-    // {hidden}
+    {hidden}
     y: [0..20] init 18;
 
     second_zone: bool init false; // Some information that the controller can use (in principle) in order to reduce how much information it needs to keep track of
@@ -23,7 +23,15 @@ module Vehicle
     [Down] true -> (x'=18)&(y'=10); // Decoy action to ensure we properly minimise and maximise choices
 endmodule
 
-{must_synchronise=[Up, Down, Left, Right]}
+{fixed}
+module Counter
+    counter: [0..50] init 0;
+    [Left] true -> (counter'= min(50, counter + 1));
+    [Right] true -> (counter'= min(50, counter + 1));
+    [Up] true -> (counter'= min(50, counter + 1));
+    [Down] true -> (counter'= min(50, counter + 1));
+endmodule
+
 module Controller
     flag: bool init false;
     [Up] (false) -> true;
