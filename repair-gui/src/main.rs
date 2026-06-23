@@ -1,3 +1,4 @@
+use iced::advanced::image::Handle;
 use iced::advanced::text::highlighter::PlainText;
 use iced::futures::{AsyncBufReadExt, StreamExt};
 use iced::widget::text::Highlighter;
@@ -81,6 +82,16 @@ impl tabbed_workspace::Window for TabWindow {
             }
             TabWindow::RepairGraph => "Repair graph".to_string(),
             TabWindow::MdpExplorer => "MDP".to_string(),
+        }
+    }
+
+    fn icon(&self) -> Option<Handle> {
+        match self {
+            TabWindow::CodeWindow { .. } => Some(Handle::from_path(
+                "repair-gui/resources/icons/prism_logo.png",
+            )),
+            TabWindow::RepairGraph => None,
+            TabWindow::MdpExplorer => None,
         }
     }
 

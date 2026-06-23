@@ -1,16 +1,29 @@
-use iced::advanced::graphics::text::cosmic_text::skrifa::color::CompositeMode::Overlay;
-use iced::application::UpdateFn;
 use iced::futures::FutureExt;
-use iced::widget::container::bordered_box;
-use iced::widget::pane_grid::{Axis, Pane};
+use iced::widget::button::Status;
+use iced::widget::container::{Style, bordered_box};
+use iced::widget::pane_grid::{Axis, Direction, Pane};
+use iced::widget::tooltip::Position;
 use iced::widget::{
-    Container, PaneGrid, Row, button, column, container, pane_grid, row, stack, text,
+    Container, PaneGrid, Row, Space, button, column, container, pane_grid, row, stack, text,
 };
+use iced::widget::{image, tooltip};
 use iced::{Element, Task};
 use iced_core::border::Radius;
+use iced_core::image::Handle;
+use iced_core::text::Wrapping;
 use iced_core::widget::Id;
-use iced_core::{Background, Border, Color, Length, Point, Rectangle};
+use iced_core::{Background, Border, Color, Length, Padding, Point, Rectangle};
 use std::collections::HashMap;
+use std::time::Duration;
+
+const BACKGROUND_COLOR: Color = Color {
+    r: 255.0 / 256.0,
+    g: 185.0 / 256.0,
+    b: 99.0 / 256.0,
+    a: 1.0,
+};
+const PANE_SPACING: f32 = 5.0;
+const PANE_RADIUS: f32 = 5.0;
 
 pub struct TabbedWorkspace<W: Window> {
     selected_window: pane_grid::Pane,
@@ -228,10 +241,21 @@ impl<W: Window> TabbedWorkspace<W> {
         emit_message: F,
     ) -> Element<'a, Msg> {
         Element::map(
-            PaneGrid::new(&self.pane_grid_state, |id, pane, maximised| {
-                pane_grid::Content::new(pane.view(id))
-            })
-            .on_resize(3, Message::PaneGridResized)
+            container(
+                PaneGrid::new(&self.pane_grid_state, |id, pane, maximised| {
+                    let above = self.pane_grid_state.adjacent(id, Direction::Up).is_some();
+                    let below = self.pane_grid_state.adjacent(id, Direction::Down).is_some();
+                    let left = self.pane_grid_state.adjacent(id, Direction::Left).is_some();
+                    let right = self
+                        .pane_grid_state
+                        .adjacent(id, Direction::Right)
+                        .is_some();
+                    pane_grid::Content::new(pane.view(id, above, below, left, right))
+                })
+                .on_resize(3, Message::PaneGridResized)
+                .spacing(PANE_SPACING),
+            )
+            .style(|t| container::Style::default().background(BACKGROUND_COLOR))
             .into(),
             emit_message,
         )
@@ -249,6 +273,7 @@ impl<W: Window> TabbedWorkspace<W> {
 pub trait Window {
     type TabAction: Clone + Send + 'static;
     fn title(&self) -> String;
+    fn icon(&self) -> Option<Handle>;
     fn update(&mut self, action: Self::TabAction);
     fn view<'a>(&'a self) -> Element<'a, Self::TabAction>;
 }
@@ -332,17 +357,114 @@ impl<W: Window> TabView<W> {
         )
     }
 
-    pub fn view<'a>(&'a self, pane: Pane) -> Element<'a, Message<W::TabAction>> {
-        let mut tab_bar = Row::new();
+    pub fn view<'a>(
+        &'a self,
+        pane: Pane,
+        above: bool,
+        below: bool,
+        left: bool,
+        right: bool,
+    ) -> Element<'a, Message<W::TabAction>> {
+        let mut tab_bar = Row::new().spacing(5.0);
+        if !above {
+            tab_bar = tab_bar.padding(Padding::default().top(PANE_SPACING))
+        }
         for (tab_index, tab) in self.tabs.iter().enumerate() {
-            let header = Container::new(row!(
-                text!("{}", tab.title()),
-                button("x").style(button::text).on_press(Message::CloseTab {
-                    pane,
-                    tab: tab_index
+            let image: Option<Element<_, _, _>> = tab.icon().map(|h| {
+                container(image::Image::new(h).width(10).height(10).border_radius(4))
+                    .center_y(Length::Fill)
+                    .into()
+            });
+            let title = tab.title();
+            let text = container(text!("{}", title).wrapping(Wrapping::None))
+                .width(Length::Fill)
+                .clip(true)
+                .padding(Padding::new(0.0).top(-2.0));
+            let tooltip_content =
+                container(text!("{}", title))
+                    .padding(6)
+                    .style(|t| container::Style {
+                        text_color: Some(Color::BLACK),
+                        background: Some(Background::Color(Color::from_rgb(0.8, 0.8, 0.8))),
+                        border: Border {
+                            color: Default::default(),
+                            width: 0.0,
+                            radius: Radius::new(4),
+                        },
+                        shadow: Default::default(),
+                        snap: false,
+                    });
+            let text = tooltip(text, tooltip_content, Position::Bottom)
+                .delay(Duration::from_secs_f64(0.2));
+            let x = button(text!("×").center())
+                .style(|theme, status| {
+                    let lightness = match status {
+                        Status::Active | Status::Disabled => 1.0,
+                        Status::Hovered => 0.8,
+                        Status::Pressed => 0.9,
+                    };
+                    let color = Color::from_rgb(lightness, lightness, lightness);
+                    button::Style {
+                        background: Some(Background::Color(color)),
+                        text_color: Color::BLACK,
+                        border: Border {
+                            color,
+                            width: 0.0,
+                            radius: Radius::new(7.5),
+                        },
+                        shadow: Default::default(),
+                        snap: false,
+                    }
                 })
-            ))
-            .style(bordered_box);
+                .on_press(Message::CloseTab {
+                    pane,
+                    tab: tab_index,
+                })
+                .height(15)
+                .width(15)
+                .padding(0);
+            let x = container(x).center_y(Length::Fill);
+            let row = match image {
+                Some(image) => row![image, text, x],
+                None => row![image, text, x],
+            }
+            .padding(4)
+            .spacing(4)
+            .width(110)
+            .height(26);
+            let header = Container::new(row).style(|t| container::Style {
+                text_color: Some(Color::BLACK),
+                background: Some(Background::Color(Color::WHITE)),
+                border: Border {
+                    color: Default::default(),
+                    width: 0.0,
+                    radius: Radius {
+                        top_left: PANE_RADIUS,
+                        top_right: PANE_RADIUS,
+                        bottom_right: 0.0,
+                        bottom_left: 0.0,
+                    },
+                },
+                shadow: Default::default(),
+                snap: false,
+            });
+            let selected_color = if self.selected == tab_index {
+                Color::WHITE
+            } else {
+                BACKGROUND_COLOR
+            };
+            let selected_bar = container(Space::new())
+                .width(110)
+                .height(3)
+                .style(move |_| container::Style {
+                    text_color: None,
+                    background: Some(Background::Color(selected_color)),
+                    border: Default::default(),
+                    shadow: Default::default(),
+                    snap: false,
+                });
+
+            let header = column![header, selected_bar];
 
             let droppable = iced_drop::droppable(header)
                 .on_drop(move |location, bounds| Message::DropTab {
@@ -364,6 +486,16 @@ impl<W: Window> TabView<W> {
             tab_bar = tab_bar.push(droppable);
         }
 
+        let tab_bar = Container::new(tab_bar.wrap())
+            .width(Length::Fill)
+            .style(|t| Style {
+                text_color: None,
+                background: Some(Background::Color(BACKGROUND_COLOR)),
+                border: Default::default(),
+                shadow: Default::default(),
+                snap: false,
+            });
+
         let main_window = if self.tabs.len() == 0 {
             text!("This tab view is empty").into()
         } else {
@@ -375,8 +507,31 @@ impl<W: Window> TabView<W> {
             })
         };
         let main_window: Element<_, _, _> = container(main_window)
+            .padding(PANE_RADIUS.max(5.0))
             .width(Length::Fill)
             .height(Length::Fill)
+            .style(move |_| {
+                let mut radius = Radius::default();
+                if right {
+                    radius.top_right = PANE_RADIUS;
+                }
+                if below && right {
+                    radius.bottom_right = PANE_RADIUS;
+                }
+                if below && left {
+                    radius.bottom_left = PANE_RADIUS;
+                }
+                if left && self.selected != 0 {
+                    radius.top_left = PANE_RADIUS;
+                }
+                container::Style {
+                    text_color: None,
+                    background: Some(Background::Color(Color::WHITE)),
+                    border: Border::default().rounded(radius),
+                    shadow: Default::default(),
+                    snap: false,
+                }
+            })
             .into();
 
         let overlay = match &self.hover_preview {
@@ -417,7 +572,15 @@ impl<W: Window> TabView<W> {
             None => main_window,
         };
 
-        let window = container(column![tab_bar.wrap(), main_window]).id(self.id.clone());
+        let window = container(column![tab_bar, main_window])
+            .id(self.id.clone())
+            .style(|t| container::Style {
+                text_color: None,
+                background: Some(Background::Color(BACKGROUND_COLOR)),
+                border: Default::default(),
+                shadow: Default::default(),
+                snap: false,
+            });
 
         window.into()
     }
