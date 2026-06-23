@@ -490,7 +490,7 @@ impl<W: Window> TabView<W> {
             let hidden = Some(tab_index) == self.hidden_tab;
             if let Some(id) = self.tab_bar_spacer_zone_id.get(insertion_index) {
                 if Some(insertion_index) == preview_index && !prev_hidden {
-                    let left_spacing = if tab_index == 0 { 0.001 } else { 5.0 };
+                    let left_spacing = if tab_index == 0 { 0.000 } else { 5.0 };
                     let right_spacing = if hidden { 4.0 } else { 5.0 };
                     tab_bar = tab_bar.push(
                         Self::view_preview_header(left_spacing, right_spacing).id(id.clone()),
@@ -514,12 +514,12 @@ impl<W: Window> TabView<W> {
 
             let header = self.view_tab_header(pane, tab_index, insertion_index, tab, !hidden);
             let smaller_container = container(header)
-                .width(1.0)
+                .width(0.0001)
                 .padding(Padding::default().right(-TAB_WIDTH))
                 .clip(hidden);
             tab_bar = tab_bar.push(smaller_container);
             if !hidden {
-                tab_bar = tab_bar.push(container(Space::new()).width(TAB_WIDTH - 1.0));
+                tab_bar = tab_bar.push(container(Space::new()).width(TAB_WIDTH - 0.0001));
             } else {
                 tab_bar = tab_bar.push(container(Space::new()).width(0.0001));
             }
