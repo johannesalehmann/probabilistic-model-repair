@@ -133,7 +133,7 @@ impl<W: Window> TabbedWorkspace<W> {
                 );
             }
             Message::HandleDropZones {
-                old_pane,
+                old_pane: old_pane_index,
                 tab_index,
                 cursor,
                 zones,
@@ -145,7 +145,7 @@ impl<W: Window> TabbedWorkspace<W> {
                         .hover_preview = None;
                 }
                 if let Some((pane, drop_kind)) = self.get_hover_location(cursor, &zones[..]) {
-                    let old_pane = self.pane_grid_state.get_mut(old_pane).unwrap();
+                    let old_pane = self.pane_grid_state.get_mut(old_pane_index).unwrap();
                     let tab = old_pane.tabs.remove(tab_index);
                     if old_pane.selected >= tab_index && tab_index > 0 {
                         old_pane.selected -= 1;
@@ -179,6 +179,13 @@ impl<W: Window> TabbedWorkspace<W> {
                             if kind == SplitKind::Top || kind == SplitKind::Left {
                                 self.pane_grid_state.swap(pane, split_result);
                             }
+                        }
+                    }
+                    let old_pane = self.pane_grid_state.get_mut(old_pane_index).unwrap();
+                    if old_pane.tabs.len() == 0 {
+                        let result = self.pane_grid_state.close(old_pane_index);
+                        if result.is_some() {
+                            // TODO: Clean up ids.
                         }
                     }
                 }
@@ -381,19 +388,18 @@ impl<W: Window> TabView<W> {
                         bordered_box(t)
                             .background(Background::Color(Color::BLACK.scale_alpha(0.1)))
                             .border(Border {
-                                color: Color::BLACK.scale_alpha(0.7),
-                                width: 5.0,
+                                color: Color::BLACK.scale_alpha(0.5),
+                                width: 4.0,
                                 radius: Radius::new(10.0),
                             })
                     });
                 let active = iced::widget::container(active_inner)
                     .width(Length::FillPortion(1))
                     .height(Length::FillPortion(1))
-                    .padding(16.0);
+                    .padding(8.0);
                 let filler = iced::widget::container(text!(""))
                     .width(Length::FillPortion(1))
-                    .height(Length::FillPortion(1))
-                    .padding(16.0);
+                    .height(Length::FillPortion(1));
                 let overlay_content: Element<_, _, _> = match kind {
                     SplitKind::Top => column![active, filler].into(),
                     SplitKind::Bottom => column![filler, active].into(),
