@@ -1,16 +1,22 @@
+use iced::advanced::graphics::text::cosmic_text::skrifa::color::CompositeMode::Overlay;
+use iced::application::UpdateFn;
 use iced::futures::FutureExt;
 use iced::widget::container::bordered_box;
-use iced::widget::pane_grid::Pane;
-use iced::widget::{Container, PaneGrid, Row, button, column, container, pane_grid, row, text};
+use iced::widget::pane_grid::{Axis, Pane};
+use iced::widget::{
+    Container, PaneGrid, Row, button, column, container, pane_grid, row, stack, text,
+};
 use iced::{Element, Task};
-use iced_core::Widget;
+use iced_core::border::Radius;
 use iced_core::widget::Id;
+use iced_core::{Background, Border, Color, Length, Point, Rectangle};
 use std::collections::HashMap;
 
 pub struct TabbedWorkspace<W: Window> {
     selected_window: pane_grid::Pane,
     pane_grid_state: pane_grid::State<TabView<W>>,
     id_to_pane: HashMap<Id, Pane>,
+    hover_preview_pane: Option<Pane>,
 }
 
 impl<W: Window> TabbedWorkspace<W> {
@@ -23,7 +29,55 @@ impl<W: Window> TabbedWorkspace<W> {
             pane_grid_state,
             selected_window,
             id_to_pane,
+            hover_preview_pane: None,
         }
+    }
+
+    fn get_hover_location(
+        &self,
+        cursor: Point,
+        zones: &[(Id, Rectangle)],
+    ) -> Option<(Pane, PaneDragKind)> {
+        for (id, rect) in zones {
+            if let Some(&pane) = self.id_to_pane.get(id) {
+                let x_progress = (cursor.x - rect.x) / rect.width;
+                let y_progress = (cursor.y - rect.y) / rect.height;
+
+                let left_distance = x_progress;
+                let right_distance = 1.0 - x_progress;
+                let top_distance = y_progress;
+                let bottom_distance = 1.0 - y_progress;
+
+                let threshold = 0.15;
+
+                let kind = if left_distance <= threshold
+                    && left_distance <= top_distance
+                    && left_distance <= bottom_distance
+                {
+                    SplitKind::Left
+                } else if right_distance <= threshold
+                    && right_distance <= top_distance
+                    && right_distance <= bottom_distance
+                {
+                    SplitKind::Right
+                } else if top_distance <= threshold
+                    && top_distance <= left_distance
+                    && top_distance <= right_distance
+                {
+                    SplitKind::Top
+                } else if bottom_distance <= threshold
+                    && bottom_distance <= left_distance
+                    && bottom_distance <= right_distance
+                {
+                    SplitKind::Bottom
+                } else {
+                    SplitKind::Center
+                };
+
+                return Some((pane, PaneDragKind::Split { kind }));
+            }
+        }
+        None
     }
 
     pub fn update(&mut self, message: Message<W::TabAction>) -> Task<Message<W::TabAction>> {
@@ -41,15 +95,10 @@ impl<W: Window> TabbedWorkspace<W> {
                     pane.selected -= 1;
                 }
             }
-            Message::Split { pane, axis } => {
-                let (new_pane, new_id) = TabView::new();
-                let (pane_id, _) = self.pane_grid_state.split(axis, pane, new_pane).unwrap();
-                self.id_to_pane.insert(new_id, pane_id);
-            }
             Message::DropTab {
                 old_pane,
                 tab_index,
-                location,
+                cursor,
                 bounds,
             } => {
                 return iced_drop::zones_on_point(
@@ -57,8 +106,28 @@ impl<W: Window> TabbedWorkspace<W> {
                         old_pane,
                         tab_index,
                         zones,
+                        cursor,
                     },
-                    location,
+                    cursor,
+                    None,
+                    None,
+                );
+            }
+
+            Message::Drag {
+                old_pane,
+                tab_index,
+                cursor,
+                bounds,
+            } => {
+                return iced_drop::zones_on_point(
+                    move |zones| Message::HandleHoverZones {
+                        old_pane,
+                        tab_index,
+                        zones,
+                        cursor,
+                    },
+                    cursor,
                     None,
                     None,
                 );
@@ -66,30 +135,74 @@ impl<W: Window> TabbedWorkspace<W> {
             Message::HandleDropZones {
                 old_pane,
                 tab_index,
+                cursor,
                 zones,
             } => {
-                if zones.len() == 1 {
-                    let (id, rect) = &zones[0];
-                    if let Some(pane) = self.id_to_pane.get(id) {
-                        let old_pane = self.pane_grid_state.get_mut(old_pane).unwrap();
-                        let tab = old_pane.tabs.remove(tab_index);
-                        if old_pane.selected >= tab_index && tab_index > 0 {
-                            old_pane.selected -= 1;
-                        }
-
-                        let new_pane = self.pane_grid_state.get_mut(*pane).unwrap();
-                        new_pane.selected = new_pane.tabs.len();
-                        new_pane.tabs.push(tab);
-                    } else {
-                        println!(
-                            "Could not match id to zone (id: {:?}, rect: {:?})",
-                            id, rect
-                        );
+                if let Some(old_preview) = self.hover_preview_pane {
+                    self.pane_grid_state
+                        .get_mut(old_preview)
+                        .unwrap()
+                        .hover_preview = None;
+                }
+                if let Some((pane, drop_kind)) = self.get_hover_location(cursor, &zones[..]) {
+                    let old_pane = self.pane_grid_state.get_mut(old_pane).unwrap();
+                    let tab = old_pane.tabs.remove(tab_index);
+                    if old_pane.selected >= tab_index && tab_index > 0 {
+                        old_pane.selected -= 1;
                     }
-                } else if zones.len() > 1 {
-                    println!("Multiple drop zones: {:?}", zones);
+                    match drop_kind {
+                        PaneDragKind::Tab { index } => {
+                            let new_pane = self.pane_grid_state.get_mut(pane).unwrap();
+                            new_pane.selected = index;
+                            new_pane.tabs.insert(index, tab);
+                        }
+                        PaneDragKind::Split {
+                            kind: SplitKind::Center,
+                        } => {
+                            let new_pane = self.pane_grid_state.get_mut(pane).unwrap();
+                            new_pane.selected = new_pane.tabs.len();
+                            new_pane.tabs.push(tab);
+                        }
+                        PaneDragKind::Split { kind } => {
+                            let axis = match kind {
+                                SplitKind::Top | SplitKind::Bottom => Axis::Horizontal,
+                                SplitKind::Left | SplitKind::Right => Axis::Vertical,
+                                SplitKind::Center => unreachable!(),
+                            };
+                            let (mut new_tab_view, id) = TabView::new();
+                            new_tab_view.tabs.push(tab);
+                            let (split_result, _) = self
+                                .pane_grid_state
+                                .split(axis, pane, new_tab_view)
+                                .unwrap();
+                            self.id_to_pane.insert(id, split_result);
+                            if kind == SplitKind::Top || kind == SplitKind::Left {
+                                self.pane_grid_state.swap(pane, split_result);
+                            }
+                        }
+                    }
                 }
             }
+
+            Message::HandleHoverZones {
+                old_pane,
+                tab_index,
+                cursor,
+                zones,
+            } => {
+                if let Some(old_preview) = self.hover_preview_pane {
+                    self.pane_grid_state
+                        .get_mut(old_preview)
+                        .unwrap()
+                        .hover_preview = None;
+                }
+                if let Some((pane, drop_kind)) = self.get_hover_location(cursor, &zones[..]) {
+                    let new_pane = self.pane_grid_state.get_mut(pane).unwrap();
+                    new_pane.hover_preview = Some(drop_kind);
+                    self.hover_preview_pane = Some(pane);
+                }
+            }
+
             Message::TabAction {
                 pane,
                 tab_index,
@@ -144,21 +257,30 @@ pub enum Message<TabAction> {
         pane: Pane,
         tab: usize,
     },
-    Split {
-        pane: Pane,
-        axis: pane_grid::Axis,
-    },
 
     DropTab {
         old_pane: Pane,
         tab_index: usize,
-        location: iced::Point,
+        cursor: iced::Point,
         bounds: iced::Rectangle,
     },
     HandleDropZones {
         old_pane: Pane,
         tab_index: usize,
-        zones: Vec<(iced::advanced::widget::Id, iced::Rectangle)>,
+        cursor: iced::Point,
+        zones: Vec<(Id, iced::Rectangle)>,
+    },
+    Drag {
+        old_pane: Pane,
+        tab_index: usize,
+        cursor: iced::Point,
+        bounds: iced::Rectangle,
+    },
+    HandleHoverZones {
+        old_pane: Pane,
+        tab_index: usize,
+        cursor: iced::Point,
+        zones: Vec<(Id, iced::Rectangle)>,
     },
 
     TabAction {
@@ -168,10 +290,25 @@ pub enum Message<TabAction> {
     },
 }
 
+enum PaneDragKind {
+    Split { kind: SplitKind },
+    Tab { index: usize },
+}
+
+#[derive(Eq, PartialEq)]
+enum SplitKind {
+    Center,
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
 struct TabView<W: Window> {
     tabs: Vec<W>,
     selected: usize,
     id: Id,
+    hover_preview: Option<PaneDragKind>,
 }
 
 impl<W: Window> TabView<W> {
@@ -182,6 +319,7 @@ impl<W: Window> TabView<W> {
                 tabs: Vec::new(),
                 selected: 0,
                 id: id.clone(),
+                hover_preview: None,
             },
             id,
         )
@@ -203,24 +341,21 @@ impl<W: Window> TabView<W> {
                 .on_drop(move |location, bounds| Message::DropTab {
                     old_pane: pane,
                     tab_index,
-                    location,
+                    cursor: location,
+                    bounds,
+                })
+                .on_drag(move |location, bounds| Message::Drag {
+                    old_pane: pane,
+                    tab_index,
+                    cursor: location,
                     bounds,
                 })
                 .on_click(Message::SelectTab {
                     pane,
                     tab: tab_index,
                 });
-
             tab_bar = tab_bar.push(droppable);
         }
-        tab_bar = tab_bar.push(button("|").on_press(Message::Split {
-            pane,
-            axis: pane_grid::Axis::Vertical,
-        }));
-        tab_bar = tab_bar.push(button("--").on_press(Message::Split {
-            pane,
-            axis: pane_grid::Axis::Horizontal,
-        }));
 
         let main_window = if self.tabs.len() == 0 {
             text!("This tab view is empty").into()
@@ -231,6 +366,49 @@ impl<W: Window> TabView<W> {
                 tab_index: self.selected,
                 action,
             })
+        };
+        let main_window: Element<_, _, _> = container(main_window)
+            .width(Length::Fill)
+            .height(Length::Fill)
+            .into();
+
+        let overlay = match &self.hover_preview {
+            Some(PaneDragKind::Split { kind }) => {
+                let active_inner = iced::widget::container(text![""])
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .style(|t| {
+                        bordered_box(t)
+                            .background(Background::Color(Color::BLACK.scale_alpha(0.1)))
+                            .border(Border {
+                                color: Color::BLACK.scale_alpha(0.7),
+                                width: 5.0,
+                                radius: Radius::new(10.0),
+                            })
+                    });
+                let active = iced::widget::container(active_inner)
+                    .width(Length::FillPortion(1))
+                    .height(Length::FillPortion(1))
+                    .padding(16.0);
+                let filler = iced::widget::container(text!(""))
+                    .width(Length::FillPortion(1))
+                    .height(Length::FillPortion(1))
+                    .padding(16.0);
+                let overlay_content: Element<_, _, _> = match kind {
+                    SplitKind::Top => column![active, filler].into(),
+                    SplitKind::Bottom => column![filler, active].into(),
+                    SplitKind::Left => row![active, filler].into(),
+                    SplitKind::Right => row![filler, active].into(),
+                    &SplitKind::Center => row![active].into(),
+                };
+                Some(overlay_content)
+            }
+            _ => None,
+        };
+
+        let main_window = match overlay {
+            Some(overlay) => stack![main_window, overlay].into(),
+            None => main_window,
         };
 
         let window = container(column![tab_bar.wrap(), main_window]).id(self.id.clone());
