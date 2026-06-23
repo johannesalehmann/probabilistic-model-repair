@@ -46,6 +46,16 @@ impl<W: Window> TabbedWorkspace<W> {
         }
     }
 
+    fn clear_preview(&mut self) {
+        if let Some(old_preview) = self.hover_preview_pane {
+            self.pane_grid_state
+                .get_mut(old_preview)
+                .unwrap()
+                .hover_preview = None;
+            self.hover_preview_pane = None;
+        }
+    }
+
     fn get_hover_location(
         &self,
         cursor: Point,
@@ -101,11 +111,16 @@ impl<W: Window> TabbedWorkspace<W> {
             Message::SelectTab { pane, tab } => {
                 self.pane_grid_state.get_mut(pane).unwrap().selected = tab;
             }
-            Message::CloseTab { pane, tab } => {
-                let pane = self.pane_grid_state.get_mut(pane).unwrap();
+            Message::CloseTab { pane: pane_id, tab } => {
+                let pane = self.pane_grid_state.get_mut(pane_id).unwrap();
                 pane.tabs.remove(tab);
                 if pane.selected > 0 && pane.selected >= tab {
                     pane.selected -= 1;
+                }
+
+                if pane.tabs.is_empty() {
+                    self.pane_grid_state.close(pane_id);
+                    // TODO: Clean up IDs
                 }
             }
             Message::DropTab {
@@ -151,12 +166,7 @@ impl<W: Window> TabbedWorkspace<W> {
                 cursor,
                 zones,
             } => {
-                if let Some(old_preview) = self.hover_preview_pane {
-                    self.pane_grid_state
-                        .get_mut(old_preview)
-                        .unwrap()
-                        .hover_preview = None;
-                }
+                self.clear_preview();
                 if let Some((pane, drop_kind)) = self.get_hover_location(cursor, &zones[..]) {
                     let old_pane = self.pane_grid_state.get_mut(old_pane_index).unwrap();
                     let tab = old_pane.tabs.remove(tab_index);
@@ -210,12 +220,7 @@ impl<W: Window> TabbedWorkspace<W> {
                 cursor,
                 zones,
             } => {
-                if let Some(old_preview) = self.hover_preview_pane {
-                    self.pane_grid_state
-                        .get_mut(old_preview)
-                        .unwrap()
-                        .hover_preview = None;
-                }
+                self.clear_preview();
                 if let Some((pane, drop_kind)) = self.get_hover_location(cursor, &zones[..]) {
                     let new_pane = self.pane_grid_state.get_mut(pane).unwrap();
                     new_pane.hover_preview = Some(drop_kind);
@@ -231,6 +236,10 @@ impl<W: Window> TabbedWorkspace<W> {
                 let pane = self.pane_grid_state.get_mut(pane).unwrap();
                 let tab = &mut pane.tabs[tab_index];
                 tab.update(action);
+            }
+            Message::CancelDrag => {
+                println!("Cancelled drag!");
+                self.clear_preview()
             }
         }
         Task::none()
@@ -314,6 +323,7 @@ pub enum Message<TabAction> {
         cursor: iced::Point,
         zones: Vec<(Id, iced::Rectangle)>,
     },
+    CancelDrag,
 
     TabAction {
         pane: Pane,
@@ -479,10 +489,12 @@ impl<W: Window> TabView<W> {
                     cursor: location,
                     bounds,
                 })
+                .on_cancel(Message::CancelDrag)
                 .on_click(Message::SelectTab {
                     pane,
                     tab: tab_index,
-                });
+                })
+                .drag_hide(true);
             tab_bar = tab_bar.push(droppable);
         }
 
