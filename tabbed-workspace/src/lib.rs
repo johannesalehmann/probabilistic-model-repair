@@ -42,12 +42,14 @@ const PREVIEW_BORDER_WIDTH: f32 = 0.0;
 const PREVIEW_BORDER_RADIUS: f32 = 10.0;
 const PREVIEW_INSET: f32 = 8.0;
 
+const TAB_BAR_DROP_ZONE_OVERHANG: f32 = 16.0;
+
 pub struct TabbedWorkspace<W: Window> {
     selected_window: pane_grid::Pane,
     pane_grid_state: pane_grid::State<TabView<W>>,
     id_to_pane: HashMap<Id, DropLocation>,
     hover_preview_pane: Option<Pane>,
-    dragged_tab: Option<(W, Pane, usize)>,
+    hidden_tab: Option<Pane>,
 }
 
 #[derive(Eq, PartialEq, Hash)]
@@ -71,7 +73,7 @@ impl<W: Window> TabbedWorkspace<W> {
             selected_window,
             id_to_pane: HashMap::new(),
             hover_preview_pane: None,
-            dragged_tab: None,
+            hidden_tab: None,
         };
         res.add_drop_ids(selected_window, default_id);
         res
@@ -83,22 +85,26 @@ impl<W: Window> TabbedWorkspace<W> {
         }
     }
 
-    fn replace_dragged_tab(&mut self) {
-        if let Some((dragged_tab, pane_id, index)) = self.dragged_tab.take() {
-            let pane = self.pane_grid_state.get_mut(pane_id).unwrap();
-            pane.tabs.insert(index, dragged_tab);
-        }
+    fn unhide_tab(&mut self) {
+        let pane_id = self.hidden_tab.unwrap();
+        let pane = self.pane_grid_state.get_mut(pane_id).unwrap();
+        pane.hidden_tab = None;
+        self.hidden_tab = None;
     }
 
-    fn take_dragged_tab(&mut self, new_pane: Pane) -> W {
-        let (dragged_tab, pane_id, index) = self.dragged_tab.take().unwrap();
-        if new_pane != pane_id {
-            let pane = self.pane_grid_state.get(pane_id).unwrap();
-            if pane.tabs.len() == 0 {
-                self.close_pane(pane_id)
-            }
+    fn take_tab(&mut self, old_pane_id: Pane, old_index: usize, new_pane_id: Pane) -> W {
+        let old_pane = self.pane_grid_state.get_mut(old_pane_id).unwrap();
+        let tab = old_pane.tabs.remove(old_index);
+
+        if old_pane.selected >= old_index && old_pane.selected > 0 {
+            old_pane.selected -= 1;
         }
-        dragged_tab
+
+        if old_pane_id != new_pane_id && old_pane.tabs.is_empty() {
+            self.close_pane(old_pane_id);
+        }
+
+        tab
     }
 
     fn close_pane(&mut self, pane_id: Pane) {
@@ -205,20 +211,16 @@ impl<W: Window> TabbedWorkspace<W> {
             }
 
             Message::Drag {
-                old_pane,
-                tab_index,
+                old_pane_id,
+                old_index,
                 cursor,
                 bounds,
             } => {
-                if self.dragged_tab.is_none() {
-                    println!("Removing drag tab from tabs");
-                    let pane = self.pane_grid_state.get_mut(old_pane).unwrap();
-                    let tab = pane.tabs.remove(tab_index);
-                    self.dragged_tab = Some((tab, old_pane, tab_index));
-                    pane.hover_preview = Some(PaneDragKind::Tab { index: tab_index });
-                    if pane.selected >= tab_index && tab_index > 0 {
-                        pane.selected -= 1;
-                    }
+                if self.hidden_tab.is_none() {
+                    let pane = self.pane_grid_state.get_mut(old_pane_id).unwrap();
+                    pane.hidden_tab = Some(old_index);
+                    pane.hover_preview = Some(PaneDragKind::Tab { index: old_index });
+                    self.hidden_tab = Some(old_pane_id);
                 }
 
                 return iced_drop::zones_on_point(
@@ -238,20 +240,34 @@ impl<W: Window> TabbedWorkspace<W> {
                 }
             }
 
-            Message::DropTab { cursor, bounds } => {
-                println!("Dropped tab");
+            Message::DropTab {
+                cursor,
+                bounds,
+                old_pane_id,
+                old_index,
+            } => {
                 return iced_drop::zones_on_point(
-                    move |zones| Message::HandleDropZones { zones, cursor },
+                    move |zones| Message::HandleDropZones {
+                        zones,
+                        cursor,
+                        old_pane_id,
+                        old_index,
+                    },
                     cursor,
                     None,
                     None,
                 );
             }
-            Message::HandleDropZones { cursor, zones } => {
-                println!("Handling dropped tab");
+            Message::HandleDropZones {
+                cursor,
+                zones,
+                old_pane_id,
+                old_index,
+            } => {
                 self.clear_preview();
+                self.unhide_tab();
                 if let Some((pane, drop_kind)) = self.get_hover_location(cursor, &zones[..]) {
-                    let tab = self.take_dragged_tab(pane);
+                    let tab = self.take_tab(old_pane_id, old_index, pane);
                     match drop_kind {
                         PaneDragKind::Tab { index } => {
                             let new_pane = self.pane_grid_state.get_mut(pane).unwrap();
@@ -283,8 +299,6 @@ impl<W: Window> TabbedWorkspace<W> {
                             }
                         }
                     }
-                } else {
-                    self.replace_dragged_tab()
                 }
             }
 
@@ -300,7 +314,7 @@ impl<W: Window> TabbedWorkspace<W> {
             Message::CancelDrag => {
                 println!("Cancelling drag");
                 self.clear_preview();
-                self.replace_dragged_tab();
+                self.unhide_tab();
             }
         }
         Task::none()
@@ -360,21 +374,25 @@ pub enum Message<TabAction> {
         tab: usize,
     },
 
-    DropTab {
-        cursor: iced::Point,
-        bounds: iced::Rectangle,
-    },
-    HandleDropZones {
-        cursor: iced::Point,
-        zones: Vec<(Id, iced::Rectangle)>,
-    },
     Drag {
-        old_pane: Pane,
-        tab_index: usize,
+        old_pane_id: Pane,
+        old_index: usize,
         cursor: iced::Point,
         bounds: iced::Rectangle,
     },
     HandleHoverZones {
+        cursor: iced::Point,
+        zones: Vec<(Id, iced::Rectangle)>,
+    },
+    DropTab {
+        old_pane_id: Pane,
+        old_index: usize,
+        cursor: iced::Point,
+        bounds: iced::Rectangle,
+    },
+    HandleDropZones {
+        old_pane_id: Pane,
+        old_index: usize,
         cursor: iced::Point,
         zones: Vec<(Id, iced::Rectangle)>,
     },
@@ -409,6 +427,7 @@ struct TabView<W: Window> {
     tab_bar_left_zone_id: Vec<Id>,
     tab_bar_right_zone_id: Vec<Id>,
     tab_bar_spacer_zone_id: Vec<Id>,
+    hidden_tab: Option<usize>,
 }
 
 impl<W: Window> TabView<W> {
@@ -439,6 +458,7 @@ impl<W: Window> TabView<W> {
                 tab_bar_left_zone_id,
                 tab_bar_right_zone_id,
                 tab_bar_spacer_zone_id,
+                hidden_tab: None,
             },
             id_to_component,
         )
@@ -452,7 +472,7 @@ impl<W: Window> TabView<W> {
         left: bool,
         right: bool,
     ) -> Element<'a, Message<W::TabAction>> {
-        let mut tab_bar = Row::new().height(33);
+        let mut tab_bar = Row::new().height(33).width(Length::Fill);
         if !above {
             tab_bar = tab_bar.padding(Padding::default().top(PANE_SPACING))
         }
@@ -463,12 +483,25 @@ impl<W: Window> TabView<W> {
             PaneDragKind::Split { .. } => None,
             PaneDragKind::Tab { index } => Some(*index),
         });
+        let mut insertion_index = 0;
+        let mut prev_hidden = false;
         for (tab_index, tab) in self.tabs.iter().enumerate() {
-            if let Some(id) = self.tab_bar_spacer_zone_id.get(tab_index) {
-                if Some(tab_index) == preview_index {
-                    tab_bar = tab_bar.push(Self::view_preview_header(tab_index).id(id.clone()));
+            let hidden = Some(tab_index) == self.hidden_tab;
+            if let Some(id) = self.tab_bar_spacer_zone_id.get(insertion_index) {
+                if Some(insertion_index) == preview_index && !prev_hidden {
+                    let left_spacing = if tab_index == 0 { 0.001 } else { 5.0 };
+                    let right_spacing = if hidden { 4.0 } else { 5.0 };
+                    tab_bar = tab_bar.push(
+                        Self::view_preview_header(left_spacing, right_spacing).id(id.clone()),
+                    );
                 } else {
-                    let spacer_width = if tab_index == 0 { 0.0 } else { 5.0 };
+                    let spacer_width = if tab_index == 0 || prev_hidden {
+                        0.001
+                    } else if hidden {
+                        4.0
+                    } else {
+                        5.0
+                    };
                     tab_bar = tab_bar.push(
                         container(Space::new())
                             .width(spacer_width)
@@ -478,16 +511,39 @@ impl<W: Window> TabView<W> {
                 }
             }
 
-            let header = self.view_tab_header(pane, tab_index, tab);
-            tab_bar = tab_bar.push(header);
+            let header = self.view_tab_header(pane, tab_index, insertion_index, tab, !hidden);
+            let smaller_container = container(header)
+                .width(1.0)
+                .padding(Padding::default().right(-110.0))
+                .clip(hidden);
+            tab_bar = tab_bar.push(smaller_container);
+            if !hidden {
+                tab_bar = tab_bar.push(container(Space::new()).width(109.0));
+            } else {
+                tab_bar = tab_bar.push(container(Space::new()).width(0.0));
+            }
+            if !hidden {
+                insertion_index += 1;
+            }
+            prev_hidden = hidden;
         }
-        if Some(self.tabs.len()) == preview_index {
-            if let Some(id) = self.tab_bar_spacer_zone_id.get(self.tabs.len()) {
-                tab_bar = tab_bar.push(Self::view_preview_header(self.tabs.len()).id(id.clone()));
+        if Some(insertion_index) == preview_index && !prev_hidden {
+            if let Some(id) = self.tab_bar_spacer_zone_id.get(insertion_index) {
+                let left_spacing = if self.tabs.len() == 0 { 0.001 } else { 5.0 };
+                tab_bar = tab_bar.push(Self::view_preview_header(left_spacing, 0.0).id(id.clone()));
             }
         }
 
-        let tab_bar = Container::new(tab_bar.wrap())
+        if let Some(id) = self.tab_bar_left_zone_id.get(insertion_index) {
+            tab_bar = tab_bar.push(
+                container(Space::new())
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .id(id.clone()),
+            )
+        }
+
+        let tab_bar = Container::new(tab_bar)
             .width(Length::Fill)
             .style(|t| Style {
                 text_color: None,
@@ -597,7 +653,8 @@ impl<W: Window> TabView<W> {
     }
 
     fn view_preview_header<'a>(
-        tab_index: usize,
+        left_spacing: f32,
+        right_spacing: f32,
     ) -> Container<'a, Message<<W as Window>::TabAction>> {
         let border = Border {
             radius: Radius {
@@ -627,8 +684,8 @@ impl<W: Window> TabView<W> {
         let inner = stack![white, tinted];
         let preview_header = container(inner).padding(
             Padding::default()
-                .left(if tab_index == 0 { 0.0 } else { 5.0 })
-                .right(5.0)
+                .left(left_spacing)
+                .right(right_spacing)
                 .bottom(-PREVIEW_INSET),
         );
         preview_header
@@ -638,7 +695,9 @@ impl<W: Window> TabView<W> {
         &'a self,
         pane: Pane,
         tab_index: usize,
+        insertion_index: usize,
         tab: &W,
+        with_ids: bool,
     ) -> Droppable<Message<<W as Window>::TabAction>> {
         let image: Option<Element<_, _, _>> = tab.icon().map(|h| {
             container(image::Image::new(h).width(10).height(10).border_radius(4))
@@ -735,13 +794,15 @@ impl<W: Window> TabView<W> {
 
         let header = column![header, selected_bar];
 
-        let id_hover = if tab_index + 1 >= self.tab_bar_right_zone_id.len() {
+        let id_hover = if !with_ids {
+            row![]
+        } else if insertion_index + 1 >= self.tab_bar_right_zone_id.len() {
             println!("Too many tabs. Dragging and dropping tabs may not work correctly");
             // TODO: Handle this properly (also above)
             row![]
         } else {
-            let left_id = self.tab_bar_left_zone_id[tab_index].clone();
-            let right_id = self.tab_bar_right_zone_id[tab_index + 1].clone();
+            let left_id = self.tab_bar_left_zone_id[insertion_index].clone();
+            let right_id = self.tab_bar_right_zone_id[insertion_index + 1].clone();
             row![
                 container(Space::new())
                     .id(left_id)
@@ -758,12 +819,14 @@ impl<W: Window> TabView<W> {
 
         let droppable = iced_drop::droppable(with_zones)
             .on_drop(move |location, bounds| Message::DropTab {
+                old_pane_id: pane,
+                old_index: tab_index,
                 cursor: location,
                 bounds,
             })
             .on_drag(move |location, bounds| Message::Drag {
-                old_pane: pane,
-                tab_index,
+                old_pane_id: pane,
+                old_index: tab_index,
                 cursor: location,
                 bounds,
             })
@@ -771,7 +834,8 @@ impl<W: Window> TabView<W> {
             .on_click(Message::SelectTab {
                 pane,
                 tab: tab_index,
-            });
+            })
+            .drag_hide(true);
         droppable
     }
 }
