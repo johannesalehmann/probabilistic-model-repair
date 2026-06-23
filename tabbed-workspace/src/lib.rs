@@ -28,21 +28,46 @@ const PANE_RADIUS: f32 = 5.0;
 pub struct TabbedWorkspace<W: Window> {
     selected_window: pane_grid::Pane,
     pane_grid_state: pane_grid::State<TabView<W>>,
-    id_to_pane: HashMap<Id, Pane>,
+    id_to_pane: HashMap<Id, DropLocation>,
     hover_preview_pane: Option<Pane>,
+}
+
+#[derive(Eq, PartialEq, Hash)]
+pub struct DropLocation {
+    pane: Pane,
+    component: DropComponent,
+}
+
+#[derive(Eq, PartialEq, Hash)]
+pub enum DropComponent {
+    TabBar { index: usize },
+    MainWindow,
 }
 
 impl<W: Window> TabbedWorkspace<W> {
     pub fn new() -> Self {
         let (default_window, default_id) = TabView::new();
         let (pane_grid_state, selected_window) = pane_grid::State::new(default_window);
-        let mut id_to_pane = HashMap::new();
-        id_to_pane.insert(default_id, selected_window);
-        Self {
+        let mut res = Self {
             pane_grid_state,
             selected_window,
-            id_to_pane,
+            id_to_pane: HashMap::new(),
             hover_preview_pane: None,
+        };
+        res.add_drop_ids(selected_window, default_id);
+        res
+    }
+
+    fn add_drop_ids(&mut self, pane: Pane, new_ids: Vec<(Id, DropComponent)>) {
+        for (id, component) in new_ids {
+            self.id_to_pane.insert(id, DropLocation { pane, component });
+        }
+    }
+
+    fn clear_drop_ids(&mut self, tab_group: TabView<W>) {
+        self.id_to_pane.remove(&tab_group.id).unwrap();
+        for id in tab_group.tab_bar_ids {
+            self.id_to_pane.remove(&id);
         }
     }
 
@@ -62,42 +87,48 @@ impl<W: Window> TabbedWorkspace<W> {
         zones: &[(Id, Rectangle)],
     ) -> Option<(Pane, PaneDragKind)> {
         for (id, rect) in zones {
-            if let Some(&pane) = self.id_to_pane.get(id) {
-                let x_progress = (cursor.x - rect.x) / rect.width;
-                let y_progress = (cursor.y - rect.y) / rect.height;
+            if let Some(drop_location) = self.id_to_pane.get(id) {
+                let kind = match drop_location.component {
+                    DropComponent::TabBar { index } => PaneDragKind::Tab { index },
+                    DropComponent::MainWindow => {
+                        let x_progress = (cursor.x - rect.x) / rect.width;
+                        let y_progress = (cursor.y - rect.y) / rect.height;
 
-                let left_distance = x_progress;
-                let right_distance = 1.0 - x_progress;
-                let top_distance = y_progress;
-                let bottom_distance = 1.0 - y_progress;
+                        let left_distance = x_progress;
+                        let right_distance = 1.0 - x_progress;
+                        let top_distance = y_progress;
+                        let bottom_distance = 1.0 - y_progress;
 
-                let threshold = 0.15;
+                        let threshold = 0.15;
 
-                let kind = if left_distance <= threshold
-                    && left_distance <= top_distance
-                    && left_distance <= bottom_distance
-                {
-                    SplitKind::Left
-                } else if right_distance <= threshold
-                    && right_distance <= top_distance
-                    && right_distance <= bottom_distance
-                {
-                    SplitKind::Right
-                } else if top_distance <= threshold
-                    && top_distance <= left_distance
-                    && top_distance <= right_distance
-                {
-                    SplitKind::Top
-                } else if bottom_distance <= threshold
-                    && bottom_distance <= left_distance
-                    && bottom_distance <= right_distance
-                {
-                    SplitKind::Bottom
-                } else {
-                    SplitKind::Center
+                        let kind = if left_distance <= threshold
+                            && left_distance <= top_distance
+                            && left_distance <= bottom_distance
+                        {
+                            SplitKind::Left
+                        } else if right_distance <= threshold
+                            && right_distance <= top_distance
+                            && right_distance <= bottom_distance
+                        {
+                            SplitKind::Right
+                        } else if top_distance <= threshold
+                            && top_distance <= left_distance
+                            && top_distance <= right_distance
+                        {
+                            SplitKind::Top
+                        } else if bottom_distance <= threshold
+                            && bottom_distance <= left_distance
+                            && bottom_distance <= right_distance
+                        {
+                            SplitKind::Bottom
+                        } else {
+                            SplitKind::Center
+                        };
+                        PaneDragKind::Split { kind }
+                    }
                 };
 
-                return Some((pane, PaneDragKind::Split { kind }));
+                return Some((drop_location.pane.clone(), kind));
             }
         }
         None
@@ -119,8 +150,11 @@ impl<W: Window> TabbedWorkspace<W> {
                 }
 
                 if pane.tabs.is_empty() {
-                    self.pane_grid_state.close(pane_id);
-                    // TODO: Clean up IDs
+                    // TODO: Merge with code below
+                    let result = self.pane_grid_state.close(pane_id);
+                    if let Some((tab, _)) = result {
+                        self.clear_drop_ids(tab)
+                    }
                 }
             }
             Message::DropTab {
@@ -192,13 +226,13 @@ impl<W: Window> TabbedWorkspace<W> {
                                 SplitKind::Left | SplitKind::Right => Axis::Vertical,
                                 SplitKind::Center => unreachable!(),
                             };
-                            let (mut new_tab_view, id) = TabView::new();
+                            let (mut new_tab_view, new_ids) = TabView::new();
                             new_tab_view.tabs.push(tab);
                             let (split_result, _) = self
                                 .pane_grid_state
                                 .split(axis, pane, new_tab_view)
                                 .unwrap();
-                            self.id_to_pane.insert(id, split_result);
+                            self.add_drop_ids(split_result, new_ids);
                             if kind == SplitKind::Top || kind == SplitKind::Left {
                                 self.pane_grid_state.swap(pane, split_result);
                             }
@@ -207,8 +241,8 @@ impl<W: Window> TabbedWorkspace<W> {
                     let old_pane = self.pane_grid_state.get_mut(old_pane_index).unwrap();
                     if old_pane.tabs.len() == 0 {
                         let result = self.pane_grid_state.close(old_pane_index);
-                        if result.is_some() {
-                            // TODO: Clean up ids.
+                        if let Some((tab, _)) = result {
+                            self.clear_drop_ids(tab)
                         }
                     }
                 }
@@ -351,19 +385,29 @@ struct TabView<W: Window> {
     selected: usize,
     id: Id,
     hover_preview: Option<PaneDragKind>,
+    tab_bar_ids: Vec<Id>,
 }
 
 impl<W: Window> TabView<W> {
-    pub fn new() -> (Self, Id) {
+    pub fn new() -> (Self, Vec<(Id, DropComponent)>) {
         let id = Id::unique();
+        let tab_bar_ids: Vec<_> = (0..256).map(|_| Id::unique()).collect();
+
+        let mut id_to_component = Vec::new();
+        id_to_component.push((id.clone(), DropComponent::MainWindow));
+        for (index, id) in tab_bar_ids.iter().enumerate() {
+            id_to_component.push((id.clone(), DropComponent::TabBar { index }));
+        }
+
         (
             Self {
                 tabs: Vec::new(),
                 selected: 0,
                 id: id.clone(),
                 hover_preview: None,
+                tab_bar_ids,
             },
-            id,
+            id_to_component,
         )
     }
 
@@ -476,7 +520,28 @@ impl<W: Window> TabView<W> {
 
             let header = column![header, selected_bar];
 
-            let droppable = iced_drop::droppable(header)
+            let id_hover = if tab_index + 1 >= self.tab_bar_ids.len() {
+                println!("Too many tabs. Dragging and dropping tabs may not work correctly");
+                // TODO: Handle this properly
+                row![]
+            } else {
+                let left_id = self.tab_bar_ids[tab_index].clone();
+                let right_id = self.tab_bar_ids[tab_index + 1].clone();
+                row![
+                    container(Space::new())
+                        .id(left_id)
+                        .height(Length::Fill)
+                        .width(Length::FillPortion(1)),
+                    container(Space::new())
+                        .id(right_id)
+                        .height(Length::Fill)
+                        .width(Length::FillPortion(1))
+                ]
+            };
+
+            let with_zones = stack![header, id_hover];
+
+            let droppable = iced_drop::droppable(with_zones)
                 .on_drop(move |location, bounds| Message::DropTab {
                     old_pane: pane,
                     tab_index,
@@ -579,20 +644,19 @@ impl<W: Window> TabView<W> {
             _ => None,
         };
 
-        let main_window = match overlay {
+        let main_window = container(match overlay {
             Some(overlay) => stack![main_window, overlay].into(),
             None => main_window,
-        };
+        })
+        .id(self.id.clone());
 
-        let window = container(column![tab_bar, main_window])
-            .id(self.id.clone())
-            .style(|t| container::Style {
-                text_color: None,
-                background: Some(Background::Color(BACKGROUND_COLOR)),
-                border: Default::default(),
-                shadow: Default::default(),
-                snap: false,
-            });
+        let window = container(column![tab_bar, main_window]).style(|t| container::Style {
+            text_color: None,
+            background: Some(Background::Color(BACKGROUND_COLOR)),
+            border: Default::default(),
+            shadow: Default::default(),
+            snap: false,
+        });
 
         window.into()
     }
