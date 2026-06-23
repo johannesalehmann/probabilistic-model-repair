@@ -42,7 +42,8 @@ const PREVIEW_BORDER_WIDTH: f32 = 0.0;
 const PREVIEW_BORDER_RADIUS: f32 = 10.0;
 const PREVIEW_INSET: f32 = 8.0;
 
-const TAB_BAR_DROP_ZONE_OVERHANG: f32 = 16.0;
+const TAB_BAR_HEIGHT: f32 = 50.0;
+const TAB_WIDTH: f32 = 130.0;
 
 pub struct TabbedWorkspace<W: Window> {
     selected_window: pane_grid::Pane,
@@ -472,7 +473,7 @@ impl<W: Window> TabView<W> {
         left: bool,
         right: bool,
     ) -> Element<'a, Message<W::TabAction>> {
-        let mut tab_bar = Row::new().height(33).width(Length::Fill);
+        let mut tab_bar = Row::new().height(TAB_BAR_HEIGHT).width(Length::Fill);
         if !above {
             tab_bar = tab_bar.padding(Padding::default().top(PANE_SPACING))
         }
@@ -514,13 +515,13 @@ impl<W: Window> TabView<W> {
             let header = self.view_tab_header(pane, tab_index, insertion_index, tab, !hidden);
             let smaller_container = container(header)
                 .width(1.0)
-                .padding(Padding::default().right(-110.0))
+                .padding(Padding::default().right(-TAB_WIDTH))
                 .clip(hidden);
             tab_bar = tab_bar.push(smaller_container);
             if !hidden {
-                tab_bar = tab_bar.push(container(Space::new()).width(109.0));
+                tab_bar = tab_bar.push(container(Space::new()).width(TAB_WIDTH - 1.0));
             } else {
-                tab_bar = tab_bar.push(container(Space::new()).width(0.0));
+                tab_bar = tab_bar.push(container(Space::new()).width(0.0001));
             }
             if !hidden {
                 insertion_index += 1;
@@ -666,7 +667,7 @@ impl<W: Window> TabView<W> {
             ..Default::default()
         };
         let white = container(Space::new())
-            .width(110.0)
+            .width(TAB_WIDTH)
             .height(Length::Fill)
             .style(move |t| container::Style {
                 background: Some(Background::Color(Color::WHITE)),
@@ -674,7 +675,7 @@ impl<W: Window> TabView<W> {
                 ..Default::default()
             });
         let tinted = container(Space::new())
-            .width(110.0)
+            .width(TAB_WIDTH)
             .height(Length::Fill)
             .style(move |t| container::Style {
                 background: Some(Background::Color(PREVIEW_BACKGROUND_COLOR)),
@@ -708,7 +709,8 @@ impl<W: Window> TabView<W> {
         let text = container(text!("{}", title).wrapping(Wrapping::None))
             .width(Length::Fill)
             .clip(true)
-            .padding(Padding::new(0.0).top(-2.0));
+            .padding(Padding::new(0.0).top(-2.0))
+            .center_y(Length::Fill);
         let tooltip_content =
             container(text!("{}", title))
                 .padding(6)
@@ -759,7 +761,7 @@ impl<W: Window> TabView<W> {
         }
         .padding(4)
         .spacing(4)
-        .width(110);
+        .width(TAB_WIDTH);
         let header = Container::new(row).style(|t| container::Style {
             text_color: Some(Color::BLACK),
             background: Some(Background::Color(Color::WHITE)),
@@ -782,7 +784,7 @@ impl<W: Window> TabView<W> {
             BACKGROUND_COLOR
         };
         let selected_bar = container(Space::new())
-            .width(110)
+            .width(TAB_WIDTH)
             .height(3)
             .style(move |_| container::Style {
                 text_color: None,
