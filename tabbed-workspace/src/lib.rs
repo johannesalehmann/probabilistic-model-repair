@@ -298,6 +298,9 @@ impl<W: Window> TabbedWorkspace<W> {
                             if kind == SplitKind::Top || kind == SplitKind::Left {
                                 self.pane_grid_state.swap(pane, split_result);
                             }
+                            if self.pane_grid_state.get(pane).unwrap().tabs.is_empty() {
+                                self.pane_grid_state.close(pane);
+                            }
                         }
                     }
                 }
