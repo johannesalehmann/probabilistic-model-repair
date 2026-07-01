@@ -1,25 +1,16 @@
-use crate::repair_graph::PropertyCollection;
-use crate::repair_problem::{RepairProblemDescription, StepResult};
 use prism_parser::ErrorWithSource;
+use repair_lib::repair_graph::PropertyCollection;
+use repair_lib::repair_problem::RepairProblemDescription;
 use std::path::{Path, PathBuf};
 
-mod model_manipulation;
-mod preprocessing;
-mod prism_runner;
-mod repair_graph;
-mod repair_problem;
-mod task_graph;
-mod tasks;
-
-struct Paths {
+pub struct Paths {
     result: PathBuf,
-    temp: PathBuf,
     model: String,
     properties: String,
 }
 
 impl Paths {
-    fn search_directory(path: &str) -> Self {
+    pub fn search_directory(path: &str) -> Self {
         // TODO: Properly handle path concatenation
         let files = std::fs::read_dir(path)
             .unwrap_or_else(|e| panic!("Could not read directory {}: {}", path, e));
@@ -58,7 +49,6 @@ impl Paths {
         let result = Path::new(path).join("result.prism");
 
         Self {
-            temp,
             model: model.unwrap(),
             properties: properties.unwrap(),
             result,
@@ -66,41 +56,7 @@ impl Paths {
     }
 }
 
-fn main() {
-    let sources = [Paths::search_directory("models/synthesis_input_variable/")];
-
-    for path in sources {
-        println!("Repairing model `{}`", path.model);
-        match get_description(&path) {
-            Ok(description) => {
-                let mut task = description.build();
-                loop {
-                    match task.step() {
-                        StepResult::Done { model, properties } => {
-                            let target = std::fs::write(&path.result, model.to_string()).unwrap();
-                            println!(
-                                "Repair completed successfully. Final model written to `{}`.",
-                                path.result.to_str().unwrap()
-                            );
-                            break;
-                        }
-                        StepResult::MoreToDo => {}
-                        StepResult::NoMoreTasks => {
-                            println!("No more executable tasks");
-                            break;
-                        }
-                    }
-                }
-            }
-            Err(err) => {
-                err.print_error();
-            }
-        }
-    }
-    println!("Repair tool finished");
-}
-
-fn get_description<'a>(
+pub fn get_description<'a>(
     paths: &Paths,
 ) -> Result<RepairProblemDescription, DescriptionCreationError<'a>> {
     let model_source = std::fs::read_to_string(&paths.model)
@@ -134,11 +90,10 @@ fn get_description<'a>(
     Ok(RepairProblemDescription::new(
         result.model,
         property_collection,
-        paths.temp.clone(),
     ))
 }
 
-enum DescriptionCreationError<'a> {
+pub enum DescriptionCreationError<'a> {
     ModelFileIoError(std::io::Error),
     PropertyFileIoError(std::io::Error),
     ParserErrors {

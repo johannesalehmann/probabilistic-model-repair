@@ -3,8 +3,7 @@ use std::any::Any;
 use std::path::Path;
 
 pub struct TaskGraph {
-    tasks: Vec<TaskGraphNode>,
-    outputs: Vec<Option<Box<dyn Any>>>,
+    pub tasks: Vec<TaskGraphNode>,
 }
 
 impl TaskGraph {
@@ -14,7 +13,6 @@ impl TaskGraph {
                 task: Box::new(crate::tasks::SetupTask::new()),
                 depends_on: vec![],
             }],
-            outputs: vec![None],
         }
     }
 
@@ -39,7 +37,7 @@ impl TaskGraph {
         println!(
             "Executing task {} ({})",
             index,
-            self.tasks[index].task.description()
+            self.tasks[index].task.name()
         );
         if self.outputs[index].is_some() {
             panic!("Cannot execute the same node twice");
@@ -63,7 +61,7 @@ impl TaskGraph {
         self.outputs[index] = Some(output);
 
         for (new_task, depends_on) in modifications.new_tasks {
-            println!("Creating new task ({})", new_task.description());
+            println!("Creating new task ({})", new_task.name());
             self.tasks.push(TaskGraphNode {
                 task: new_task,
                 depends_on,
@@ -76,13 +74,92 @@ impl TaskGraph {
 }
 
 pub struct TaskGraphNode {
-    task: Box<dyn Task>,
-    depends_on: Vec<usize>,
+    pub task_description: Box<dyn TaskDescription>,
+    pub depends_on: Vec<usize>,
+    status: TaskStatus,
 }
 
-pub trait Task {
-    fn description(&self) -> String;
-    fn run(
+pub enum TaskStatus {
+    Ready,
+    Running {
+        handle: tokio::task::JoinHandle<Box<dyn Any>>,
+        start_time: std::time::Instant,
+    },
+    Done {
+        output: Box<dyn Any>,
+        elapsed: std::time::Duration,
+    },
+}
+
+pub struct ParameterDescription {
+    pub name: &'static str,
+    pub values: ParameterType,
+}
+
+pub enum ParameterType {
+    Integer { min: Option<i64>, max: Option<i64> },
+    Float { min: Option<f64>, max: Option<f64> },
+    Boolean,
+    Select { options: Vec<String> },
+}
+
+#[derive(Clone)]
+pub enum ParameterValue {
+    Integer(i64),
+    Float(f64),
+    Boolean(bool),
+    Select(String),
+}
+
+impl ParameterValue {
+    pub fn int(&self) -> Option<i64> {
+        if let ParameterValue::Integer(val) = self {
+            Some(*val)
+        } else {
+            None
+        }
+    }
+    pub fn float(&self) -> Option<f64> {
+        if let ParameterValue::Float(val) = self {
+            Some(*val)
+        } else {
+            None
+        }
+    }
+    pub fn bool(&self) -> Option<bool> {
+        if let ParameterValue::Boolean(val) = self {
+            Some(*val)
+        } else {
+            None
+        }
+    }
+    pub fn select(&self) -> Option<&str> {
+        if let ParameterValue::Select(val) = self {
+            Some(val)
+        } else {
+            None
+        }
+    }
+}
+
+pub trait TaskDescription {
+    fn name(&self) -> String;
+
+    fn parameter_descriptions(&self) -> Vec<ParameterDescription> {
+        Vec::new()
+    }
+
+    fn parameter_value(&self, index: usize) -> ParameterValue {
+        panic!("Task has no parameter with index {index}")
+    }
+    fn set_parameter_value(&mut self, index: usize, value: ParameterValue) {
+        panic!("Task has no parameter with index {index}")
+    }
+    fn parameter_summary(&self) -> String {
+        "no parameters".to_string()
+    }
+
+    fn create(
         &mut self,
         model: &PrismModel,
         properties: &PropertyCollection,
@@ -102,7 +179,7 @@ pub enum ExternalChange {
 }
 
 pub enum OpsGraphChange {
-    AddNode { task: Box<dyn Task> },
+    AddNode { task: Box<dyn TaskDescription> },
     ExternalChange(ExternalChange),
 }
 
@@ -129,7 +206,7 @@ impl<'a> DependencyOutputs<'a> {
 
 pub struct Modifications {
     task_index_offset: usize,
-    new_tasks: Vec<(Box<dyn Task>, Vec<usize>)>,
+    new_tasks: Vec<(Box<dyn TaskDescription>, Vec<usize>)>,
     external_changes: Vec<ExternalChange>,
 }
 
@@ -142,7 +219,11 @@ impl Modifications {
         }
     }
 
-    pub fn create_task(&mut self, task: Box<dyn Task>, dependencies: Vec<usize>) -> usize {
+    pub fn create_task(
+        &mut self,
+        task: Box<dyn TaskDescription>,
+        dependencies: Vec<usize>,
+    ) -> usize {
         let res = self.new_tasks.len() + self.task_index_offset;
         self.new_tasks.push((task, dependencies));
         res

@@ -1,5 +1,5 @@
 use crate::repair_graph::{PrismModel, PropertyCollection};
-use crate::task_graph::{DependencyOutputs, Modifications, Task};
+use crate::task_graph::{Modifications, OutputsOfDependencies, TaskDescription};
 use prism_model::{
     Assignment, Command, Displayable, Expression, FullSpan, Identifier, Module, Update,
     VariableInfo, VariableManager, VariableRange, VariableReference, VariableScope,
@@ -20,8 +20,8 @@ impl SetupTask {
     }
 }
 
-impl Task for SetupTask {
-    fn description(&self) -> String {
+impl TaskDescription for SetupTask {
+    fn name(&self) -> String {
         "SynthesisSetupTask".to_string()
     }
 
@@ -30,7 +30,7 @@ impl Task for SetupTask {
         model: &PrismModel,
         properties: &PropertyCollection,
         own_index: usize,
-        dependency_outputs: DependencyOutputs,
+        dependency_outputs: OutputsOfDependencies,
         modifications: &mut Modifications,
         temp_directory: &Path,
     ) -> Box<dyn Any> {
@@ -77,8 +77,8 @@ pub struct RepairTask {
     module: RepairModule,
 }
 
-impl Task for RepairTask {
-    fn description(&self) -> String {
+impl TaskDescription for RepairTask {
+    fn name(&self) -> String {
         format!("SynthesisTask({})", self.module)
     }
 
@@ -87,7 +87,7 @@ impl Task for RepairTask {
         model: &PrismModel,
         properties: &PropertyCollection,
         own_index: usize,
-        dependency_outputs: DependencyOutputs,
+        dependency_outputs: OutputsOfDependencies,
         modifications: &mut Modifications,
         temp_directory: &Path,
     ) -> Box<dyn Any> {

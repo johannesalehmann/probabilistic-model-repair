@@ -4,3 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+prism-model = { git = "https://github.com/johannesalehmann/tiny-pmc" }
+probabilistic-properties = { git = "https://github.com/johannesalehmann/tiny-pmc" }
+tokio = { version = "1.52", features = ["full"] }
+async-trait = "0.1.89"

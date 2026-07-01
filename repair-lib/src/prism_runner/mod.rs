@@ -1,13 +1,14 @@
 use crate::repair_graph::{CheckingResult, CheckingResults, PrismModel, PropertyCollection};
+use crate::tool_runner::ToolRunner;
 use prism_model::Displayable;
 use probabilistic_properties::{BoundOperator, NonDeterminismKind, StateFormula};
 use std::path::Path;
 use std::process::Stdio;
 
-pub fn check_properties(
+pub async fn check_properties(
     model: &PrismModel,
     properties: &PropertyCollection,
-    temp_directory: &Path,
+    tool_runner: &mut ToolRunner,
 ) -> CheckingResults {
     let model_source = model.to_string();
     let property_sources = properties
@@ -61,29 +62,18 @@ pub fn check_properties(
         .collect::<Vec<_>>()
         .join(";\n");
 
-    let file_name = temp_directory.join("checking_task_temp.prism");
-    let prop_name = temp_directory.join("checking_task_temp.props");
+    let file_name = tool_runner.temp_file("prism");
+    let prop_name = tool_runner.temp_file("props");
     std::fs::write(&file_name, model_source).expect("Failed to write temporary file");
     std::fs::write(&prop_name, property_sources).expect("Failed to write temporary file");
 
-    let process = match std::process::Command::new("prism")
-        .args(&[file_name, prop_name])
-        .stdout(Stdio::piped())
-        .spawn()
-    {
-        Ok(process) => process,
-        Err(err) => panic!("Error spawning `prism`: {}", err),
-    };
-
-    let output = match process.wait_with_output() {
-        Ok(output) => output,
-        Err(err) => panic!("Could not read `prism` output: {}", err),
-    };
-
-    let stdout = match String::from_utf8(output.stdout) {
-        Ok(stdout) => stdout,
-        Err(err) => panic!("`prism` output is not valid utf8: {}", err),
-    };
+    let stdout = tool_runner
+        .run_tool(
+            "prism",
+            vec![file_name.into_os_string(), prop_name.into_os_string()],
+        )
+        .await
+        .unwrap();
 
     let mut results = stdout
         .split("---------------------------------------------------------------------")

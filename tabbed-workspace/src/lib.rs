@@ -15,6 +15,7 @@ use iced_core::widget::Id;
 use iced_core::{Background, Border, Color, Length, Padding, Point, Rectangle};
 use iced_drop::widget::droppable::Droppable;
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::time::Duration;
 
 const BACKGROUND_COLOR: Color = Color {
@@ -42,8 +43,8 @@ const PREVIEW_BORDER_WIDTH: f32 = 0.0;
 const PREVIEW_BORDER_RADIUS: f32 = 10.0;
 const PREVIEW_INSET: f32 = 8.0;
 
-const TAB_BAR_HEIGHT: f32 = 50.0;
-const TAB_WIDTH: f32 = 130.0;
+const TAB_BAR_HEIGHT: f32 = 40.0;
+const TAB_WIDTH: f32 = 115.0;
 
 pub struct TabbedWorkspace<W: Window> {
     selected_window: pane_grid::Pane,
@@ -191,7 +192,11 @@ impl<W: Window> TabbedWorkspace<W> {
         None
     }
 
-    pub fn update(&mut self, message: Message<W::TabAction>) -> Task<Message<W::TabAction>> {
+    pub fn update(
+        &mut self,
+        message: Message<W::TabAction>,
+        shared_state: &mut W::SharedState,
+    ) -> Task<Message<W::TabAction>> {
         match message {
             Message::PaneGridResized(event) => {
                 self.pane_grid_state.resize(event.split, event.ratio);
@@ -307,13 +312,19 @@ impl<W: Window> TabbedWorkspace<W> {
             }
 
             Message::TabAction {
-                pane,
+                pane_id,
                 tab_index,
                 action,
             } => {
-                let pane = self.pane_grid_state.get_mut(pane).unwrap();
+                let pane = self.pane_grid_state.get_mut(pane_id).unwrap();
                 let tab = &mut pane.tabs[tab_index];
-                tab.update(action);
+                return tab
+                    .update(action, shared_state)
+                    .map(move |action| Message::TabAction {
+                        pane_id,
+                        tab_index,
+                        action,
+                    });
             }
             Message::CancelDrag => {
                 println!("Cancelling drag");
@@ -326,6 +337,7 @@ impl<W: Window> TabbedWorkspace<W> {
 
     pub fn view<'a, Msg: 'a, F: 'a + Clone + Fn(Message<W::TabAction>) -> Msg>(
         &'a self,
+        shared_state: &W::SharedState,
         emit_message: F,
     ) -> Element<'a, Msg> {
         Element::map(
@@ -338,7 +350,7 @@ impl<W: Window> TabbedWorkspace<W> {
                         .pane_grid_state
                         .adjacent(id, Direction::Right)
                         .is_some();
-                    pane_grid::Content::new(pane.view(id, above, below, left, right))
+                    pane_grid::Content::new(pane.view(id, above, below, left, right, shared_state))
                 })
                 .on_resize(3, Message::PaneGridResized)
                 .spacing(PANE_SPACING),
@@ -359,11 +371,17 @@ impl<W: Window> TabbedWorkspace<W> {
 }
 
 pub trait Window {
+    type SharedState;
+
     type TabAction: Clone + Send + 'static;
-    fn title(&self) -> String;
-    fn icon(&self) -> Option<Handle>;
-    fn update(&mut self, action: Self::TabAction);
-    fn view<'a>(&'a self) -> Element<'a, Self::TabAction>;
+    fn title(&self, shared_state: &Self::SharedState) -> String;
+    fn icon(&self, shared_state: &Self::SharedState) -> Option<Handle>;
+    fn update(
+        &mut self,
+        action: Self::TabAction,
+        shared_state: &mut Self::SharedState,
+    ) -> Task<Self::TabAction>;
+    fn view<'a>(&'a self, shared_state: &Self::SharedState) -> Element<'a, Self::TabAction>;
 }
 
 #[derive(Clone)]
@@ -403,7 +421,7 @@ pub enum Message<TabAction> {
     CancelDrag,
 
     TabAction {
-        pane: Pane,
+        pane_id: Pane,
         tab_index: usize,
         action: TabAction,
     },
@@ -475,6 +493,7 @@ impl<W: Window> TabView<W> {
         below: bool,
         left: bool,
         right: bool,
+        shared_state: &W::SharedState,
     ) -> Element<'a, Message<W::TabAction>> {
         let mut tab_bar = Row::new().height(TAB_BAR_HEIGHT).width(Length::Fill);
         if !above {
@@ -515,7 +534,8 @@ impl<W: Window> TabView<W> {
                 }
             }
 
-            let header = self.view_tab_header(pane, tab_index, insertion_index, tab, !hidden);
+            let header =
+                self.view_tab_header(pane, tab_index, insertion_index, tab, !hidden, shared_state);
             let smaller_container = container(header)
                 .width(0.0001)
                 .padding(Padding::default().right(-TAB_WIDTH))
@@ -561,11 +581,13 @@ impl<W: Window> TabView<W> {
             text!("This tab view is empty").into()
         } else {
             let selected = &self.tabs[self.selected];
-            selected.view().map(move |action| Message::TabAction {
-                pane,
-                tab_index: self.selected,
-                action,
-            })
+            selected
+                .view(shared_state)
+                .map(move |action| Message::TabAction {
+                    pane_id: pane,
+                    tab_index: self.selected,
+                    action,
+                })
         };
         let main_window: Element<_, _, _> = container(main_window)
             .padding(PANE_RADIUS.max(5.0))
@@ -702,13 +724,14 @@ impl<W: Window> TabView<W> {
         insertion_index: usize,
         tab: &W,
         with_ids: bool,
+        shared_state: &W::SharedState,
     ) -> Droppable<Message<<W as Window>::TabAction>> {
-        let image: Option<Element<_, _, _>> = tab.icon().map(|h| {
+        let image: Option<Element<_, _, _>> = tab.icon(shared_state).map(|h| {
             container(image::Image::new(h).width(10).height(10).border_radius(4))
                 .center_y(Length::Fill)
                 .into()
         });
-        let title = tab.title();
+        let title = tab.title(shared_state);
         let text = container(text!("{}", title).wrapping(Wrapping::None))
             .width(Length::Fill)
             .clip(true)
