@@ -2834,15 +2834,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "probabilisitic-model-repair"
-version = "0.1.0"
-dependencies = [
- "prism-model",
- "prism-parser",
- "probabilistic-properties",
-]
-
-[[package]]
 name = "probabilistic-properties"
 version = "0.1.0"
 source = "git+https://github.com/johannesalehmann/tiny-pmc#7d55321167f5858d444d3c61262857b5ae0912bb"
