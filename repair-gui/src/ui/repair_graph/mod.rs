@@ -23,9 +23,7 @@ pub enum RepairGraphMessage {
 }
 
 #[derive(Clone)]
-pub enum ModelMessage {
-    Todo,
-}
+pub enum ModelMessage {}
 
 #[derive(Clone)]
 pub enum TaskMessage {
@@ -81,11 +79,7 @@ impl RepairGraphUITab {
         shared_state: &mut SharedState,
         model_index: usize,
     ) {
-        match message {
-            ModelMessage::Todo => {
-                println!("TODO")
-            }
-        }
+        match message {}
     }
 
     fn update_task_node(
@@ -131,8 +125,6 @@ impl RepairGraphUITab {
                     position.position.y,
                     model_node,
                 ))
-            } else {
-                println!("Model node {model_index} does not have a location")
             }
             for (task_index, task) in model.tasks.tasks.iter().enumerate() {
                 if let Some(position) = shared_state
@@ -152,8 +144,6 @@ impl RepairGraphUITab {
                         position.position.y,
                         task_node,
                     ));
-                } else {
-                    println!("Task node {task_index} does not have a location")
                 }
             }
         }
@@ -203,8 +193,6 @@ impl RepairGraphUITab {
 
         window_builder.add_control(text!("{model_summary}").into());
         window_builder.add_control(text!("{property_summary}").into());
-
-        window_builder.add_call_to_action("Run!".to_string(), ModelMessage::Todo);
 
         let window = window_builder.finish();
         window.map(move |message| RepairGraphMessage::ModelNodeMessage {
