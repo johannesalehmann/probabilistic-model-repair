@@ -90,12 +90,18 @@ pub struct ToolRunner {
 
 impl ToolRunner {
     pub fn temp_file(&mut self, file_type: &str) -> PathBuf {
+        if !std::fs::exists("temp/").unwrap() {
+            std::fs::create_dir("temp/").unwrap();
+        }
+        let directory =
+            Path::new("temp/").join(format!("task_{}_{}", self.task_id.0, self.task_id.1));
+        if !std::fs::exists(&directory).unwrap() {
+            std::fs::create_dir(&directory).unwrap();
+        }
         let joiner = if file_type.starts_with(".") { "" } else { "." };
         let file = format!("{}{}{}", self.file_counter, joiner, file_type);
         self.file_counter += 1;
-        Path::new("/temp/")
-            .join(format!("task_{}_{}", self.task_id.0, self.task_id.1))
-            .join(file)
+        directory.join(file)
     }
 
     pub async fn run_tool<S: Into<String>>(
