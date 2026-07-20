@@ -1,4 +1,3 @@
-use iced::futures::FutureExt;
 use iced::widget::button::Status;
 use iced::widget::container::{Style, bordered_box};
 use iced::widget::pane_grid::{Axis, Direction, Pane};
@@ -15,7 +14,6 @@ use iced_core::widget::Id;
 use iced_core::{Background, Border, Color, Length, Padding, Point, Rectangle};
 use iced_drop::widget::droppable::Droppable;
 use std::collections::HashMap;
-use std::marker::PhantomData;
 use std::time::Duration;
 
 const BACKGROUND_COLOR: Color = Color {
@@ -220,7 +218,7 @@ impl<W: Window> TabbedWorkspace<W> {
                 old_pane_id,
                 old_index,
                 cursor,
-                bounds,
+                bounds: _bounds,
             } => {
                 if self.hidden_tab.is_none() {
                     let pane = self.pane_grid_state.get_mut(old_pane_id).unwrap();
@@ -248,7 +246,7 @@ impl<W: Window> TabbedWorkspace<W> {
 
             Message::DropTab {
                 cursor,
-                bounds,
+                bounds: _bounds,
                 old_pane_id,
                 old_index,
             } => {
@@ -355,7 +353,7 @@ impl<W: Window> TabbedWorkspace<W> {
                 .on_resize(3, Message::PaneGridResized)
                 .spacing(PANE_SPACING),
             )
-            .style(|t| container::Style::default().background(BACKGROUND_COLOR))
+            .style(|_| container::Style::default().background(BACKGROUND_COLOR))
             .into(),
             emit_message,
         )
@@ -569,7 +567,7 @@ impl<W: Window> TabView<W> {
 
         let tab_bar = Container::new(tab_bar)
             .width(Length::Fill)
-            .style(|t| Style {
+            .style(|_| Style {
                 text_color: None,
                 background: Some(Background::Color(BACKGROUND_COLOR)),
                 border: Default::default(),
@@ -667,7 +665,7 @@ impl<W: Window> TabView<W> {
         })
         .id(self.id.clone());
 
-        let window = container(column![tab_bar, main_window]).style(|t| container::Style {
+        let window = container(column![tab_bar, main_window]).style(|_| container::Style {
             text_color: None,
             background: Some(Background::Color(BACKGROUND_COLOR)),
             border: Default::default(),
@@ -694,7 +692,7 @@ impl<W: Window> TabView<W> {
         let white = container(Space::new())
             .width(TAB_WIDTH)
             .height(Length::Fill)
-            .style(move |t| container::Style {
+            .style(move |_| container::Style {
                 background: Some(Background::Color(Color::WHITE)),
                 border: border.clone(),
                 ..Default::default()
@@ -702,7 +700,7 @@ impl<W: Window> TabView<W> {
         let tinted = container(Space::new())
             .width(TAB_WIDTH)
             .height(Length::Fill)
-            .style(move |t| container::Style {
+            .style(move |_| container::Style {
                 background: Some(Background::Color(PREVIEW_BACKGROUND_COLOR)),
                 border: border.clone(),
                 ..Default::default()
@@ -725,7 +723,7 @@ impl<W: Window> TabView<W> {
         tab: &W,
         with_ids: bool,
         shared_state: &W::SharedState,
-    ) -> Droppable<Message<<W as Window>::TabAction>> {
+    ) -> Droppable<'_, Message<<W as Window>::TabAction>> {
         let image: Option<Element<_, _, _>> = tab.icon(shared_state).map(|h| {
             container(image::Image::new(h).width(10).height(10).border_radius(4))
                 .center_y(Length::Fill)
@@ -740,7 +738,7 @@ impl<W: Window> TabView<W> {
         let tooltip_content =
             container(text!("{}", title))
                 .padding(6)
-                .style(|t| container::Style {
+                .style(|_| container::Style {
                     text_color: Some(Color::BLACK),
                     background: Some(Background::Color(Color::from_rgb(0.8, 0.8, 0.8))),
                     border: Border {
@@ -788,7 +786,7 @@ impl<W: Window> TabView<W> {
         .padding(4)
         .spacing(4)
         .width(TAB_WIDTH);
-        let header = Container::new(row).style(|t| container::Style {
+        let header = Container::new(row).style(|_| container::Style {
             text_color: Some(Color::BLACK),
             background: Some(Background::Color(Color::WHITE)),
             border: Border {

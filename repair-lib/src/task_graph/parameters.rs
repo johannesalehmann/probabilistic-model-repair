@@ -3,6 +3,12 @@ pub struct ParameterDescription {
     pub values: ParameterType,
 }
 
+impl ParameterDescription {
+    pub fn new(name: &'static str, values: ParameterType) -> Self {
+        Self { name, values }
+    }
+}
+
 pub enum ParameterType {
     Integer { min: Option<i64>, max: Option<i64> },
     Float { min: Option<f64>, max: Option<f64> },

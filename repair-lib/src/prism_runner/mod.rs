@@ -2,8 +2,6 @@ use crate::repair_graph::{CheckingResult, CheckingResults, PrismModel, PropertyC
 use crate::tool_runner::ToolRunner;
 use prism_model::Displayable;
 use probabilistic_properties::{BoundOperator, NonDeterminismKind, StateFormula};
-use std::path::Path;
-use std::process::Stdio;
 
 pub async fn check_properties(
     model: &PrismModel,
@@ -19,7 +17,7 @@ pub async fn check_properties(
             if let probabilistic_properties::Query::StateFormula(StateFormula::ProbabilityBound {
                 non_determinism,
                 bound,
-                path,
+                path: _path,
             }) = &mut p
             {
                 match (&non_determinism, bound.operator) {
@@ -103,7 +101,7 @@ pub async fn check_properties(
         let after_last_result = &output[last_result + "Result: ".len()..].trim();
         let isolated = after_last_result
             .split_once(" ")
-            .map(|(a, b)| a)
+            .map(|(a, _)| a)
             .unwrap_or(after_last_result);
         let parsed =         match isolated {
             "true" => CheckingResult::Bool(true),

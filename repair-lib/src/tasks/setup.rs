@@ -3,11 +3,8 @@ use crate::task_graph::{
     Modifications, ModifiedTaskDependencies, OutputsOfDependencies, Task, TaskDescription,
     TaskOutput,
 };
-use crate::tasks::ModelCheckingTaskDescription;
-use crate::tasks::repairs::SetupRepairEnginesTaskDescription;
+use crate::tasks::demo_task::DemoTaskDescription;
 use crate::tool_runner::ToolRunner;
-use std::any::Any;
-use std::path::Path;
 
 pub struct SetupTaskDescription {}
 
@@ -39,14 +36,19 @@ impl Task for SetupTask {
     ) -> TaskOutput {
         let _ = (model, properties, inputs, tool_runner);
         let mut modifications = Modifications::new();
-        let checking_task = modifications.create_task(
-            Box::new(ModelCheckingTaskDescription::new()),
+        modifications.create_task(
+            Box::new(DemoTaskDescription::new()),
             ModifiedTaskDependencies::new().on_self(),
         );
-        modifications.create_task(
-            Box::new(SetupRepairEnginesTaskDescription::new()),
-            ModifiedTaskDependencies::new().on(checking_task),
-        );
+
+        // let checking_task = modifications.create_task(
+        //     Box::new(ModelCheckingTaskDescription::new()),
+        //     ModifiedTaskDependencies::new().on_self(),
+        // );
+        // modifications.create_task(
+        //     Box::new(SetupRepairEnginesTaskDescription::new()),
+        //     ModifiedTaskDependencies::new().on(checking_task),
+        // );
         TaskOutput {
             output: Box::new(()),
             modifications,

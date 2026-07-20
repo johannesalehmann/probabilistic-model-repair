@@ -62,7 +62,7 @@ impl RepairGraphLayout {
                         .unwrap_or(Vector::ZERO);
                     self.layout[model_index]
                         .task_positions
-                        .push(LayoutNode::new(initial_position, 1));
+                        .push(LayoutNode::new(initial_position, 8));
                     changed = true;
                 }
             }

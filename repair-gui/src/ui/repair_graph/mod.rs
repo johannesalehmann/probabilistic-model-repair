@@ -1,13 +1,14 @@
 mod layout;
+mod task_node;
 mod window_builder;
 
+use crate::SharedState;
 use crate::ui::repair_graph::window_builder::{WindowMessage, WindowState};
-use crate::{SharedState, TabAction};
-use iced::widget::{Stack, button, checkbox, container, row, space, stack, text};
-use iced::{Background, Color, Element, Length, Padding, Task};
+use iced::widget::{Stack, container, row, space, text};
+use iced::{Color, Element, Length, Padding};
 pub use layout::*;
 use repair_lib::repair_graph::RepairGraphNode;
-use repair_lib::task_graph::{ParameterDescription, ParameterType, ParameterValue, TaskGraphNode};
+use repair_lib::task_graph::ParameterValue;
 
 #[derive(Clone)]
 pub enum RepairGraphMessage {
@@ -131,13 +132,14 @@ impl RepairGraphUITab {
                     .repair_graph_layout
                     .task_position(model_index, task_index)
                 {
-                    let task_node = self.task_node(
+                    let task_node = task_node::task_node(
                         node_width,
                         node_height,
                         model_index,
                         task_index,
                         &position.window_state,
                         task,
+                        &graph.tool_runner,
                     );
                     stack = stack.push(self.place_node(
                         position.position.x - node_width * 0.5 + x_offset,
@@ -197,76 +199,6 @@ impl RepairGraphUITab {
         let window = window_builder.finish();
         window.map(move |message| RepairGraphMessage::ModelNodeMessage {
             model_index,
-            message,
-        })
-    }
-    fn task_node<'a>(
-        &self,
-        width: f32,
-        height: f32,
-        model_index: usize,
-        task_index: usize,
-        window_state: &WindowState,
-        task: &TaskGraphNode,
-    ) -> Element<'a, RepairGraphMessage> {
-        let mut window_builder =
-            window_builder::WindowBuilder::new(window_state, Color::from_rgb(0.8, 0.8, 1.0), width);
-        window_builder.add_header(format!("{}", task.description.name()));
-        let parameters = task.description.parameter_descriptions();
-        if parameters.len() > 0 {
-            window_builder.start_section(format!("{}", task.description.parameter_summary()));
-
-            for (parameter_index, parameter) in parameters.iter().enumerate() {
-                let value = task.description.parameter_value(parameter_index);
-                match parameter.values {
-                    ParameterType::Integer { min, max } => {
-                        let value = value.int().unwrap();
-                        let control = row![
-                            text!["{}: ", parameter.name],
-                            button("-").on_press(TaskMessage::SetValue {
-                                parameter_index,
-                                value: ParameterValue::Integer(value - 1)
-                            }),
-                            text!["{value}"],
-                            button("+").on_press(TaskMessage::SetValue {
-                                parameter_index,
-                                value: ParameterValue::Integer(value + 1)
-                            })
-                        ];
-                        window_builder.add_control(control.into());
-                    }
-                    ParameterType::Float { .. } => {
-                        panic!("Float parameters are not yet supported")
-                    }
-                    ParameterType::Boolean => {
-                        let value = value.bool().unwrap();
-                        window_builder.add_control(
-                            checkbox(value)
-                                .on_toggle(move |val| TaskMessage::SetValue {
-                                    parameter_index,
-                                    value: ParameterValue::Boolean(val),
-                                })
-                                .label(parameter.name)
-                                .into(),
-                        )
-                    }
-                    ParameterType::Select { .. } => {
-                        panic!("Select parameters are not yet supported")
-                    }
-                }
-            }
-
-            window_builder.end_section();
-        } else {
-            window_builder.add_control(text!["no parameters"].into());
-        }
-
-        window_builder.add_call_to_action("Run!".to_string(), TaskMessage::Run);
-
-        let window = window_builder.finish();
-        window.map(move |message| RepairGraphMessage::TaskNodeMessage {
-            model_index,
-            task_index,
             message,
         })
     }

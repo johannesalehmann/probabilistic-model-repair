@@ -4,7 +4,6 @@ pub use parameters::*;
 use crate::repair_graph::{PrismModel, PropertyCollection};
 use crate::tool_runner::ToolRunner;
 use std::any::Any;
-use std::path::Path;
 
 pub struct TaskGraph {
     pub tasks: Vec<TaskGraphNode>,
@@ -97,6 +96,7 @@ pub trait TaskDescription: Send {
         panic!("Task has no parameter with index {index}")
     }
     fn set_parameter_value(&mut self, index: usize, value: ParameterValue) {
+        let _ = value;
         panic!("Task has no parameter with index {index}")
     }
     fn parameter_summary(&self) -> String {

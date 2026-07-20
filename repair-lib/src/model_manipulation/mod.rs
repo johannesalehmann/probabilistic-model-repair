@@ -1,4 +1,4 @@
-use prism_model::{Expression, FullSpan, Model, Span, VariableRange, VariableReference};
+use prism_model::{Expression, Model, Span, VariableReference};
 
 pub struct SubExpressionOfModel {
     expression: ExpressionLocation,
@@ -253,7 +253,7 @@ impl<V, S: Span> NavigableExpression<V, S> for Expression<V, S> {
                 child_navigation,
             } => {
                 let index = *index;
-                let child = match self {
+                match self {
                     Expression::Int(_, _)
                     | Expression::Float(_, _)
                     | Expression::Bool(_, _)

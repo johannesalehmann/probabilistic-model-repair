@@ -110,7 +110,9 @@ fn get_description<'a>(
             let errors = errors
                 .into_iter()
                 .map(|e| ErrorWithSource {
-                    source: e.source,
+                    source: e.source,{
+
+                }
                     error: e.error.into_owned(),
                 })
                 .collect();

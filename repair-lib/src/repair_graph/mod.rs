@@ -1,9 +1,6 @@
-use crate::task_graph::{
-    ExternalChange, OutputsOfDependencies, TaskGraph, TaskGraphNode, TaskOutput, TaskStatus,
-};
+use crate::task_graph::{ExternalChange, TaskGraph, TaskGraphNode, TaskOutput, TaskStatus};
 use crate::tasks::SetupTaskDescription;
-use crate::tool_runner::{MainToolRunner, ToolUpdate};
-use std::path::Path;
+use crate::tool_runner::{LogUpdate, MainToolRunner};
 use tokio::sync::mpsc;
 
 pub type PrismModel = prism_model::Model;
@@ -26,7 +23,7 @@ impl RepairGraph {
     ) -> (
         Self,
         mpsc::Receiver<WrappedTaskOutput>,
-        mpsc::Receiver<ToolUpdate>,
+        mpsc::Receiver<LogUpdate>,
     ) {
         let (sender, receiver) = mpsc::channel(32);
 

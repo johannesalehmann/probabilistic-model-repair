@@ -4,18 +4,11 @@ mod ui;
 use crate::input::Paths;
 use crate::ui::repair_graph::{RepairGraphMessage, RepairGraphUITab};
 use iced::advanced::image::Handle;
-use iced::advanced::text::highlighter::PlainText;
 use iced::advanced::widget::Operation;
-use iced::advanced::widget::operation::Outcome;
-use iced::border::Radius;
-use iced::font::Style;
 use iced::futures::{AsyncBufReadExt, StreamExt};
-use iced::widget::text::{Highlighter, Rich, Span};
-use iced::widget::{
-    Checkbox, Column, PickList, Space, TextEditor, button, column, container, float, rich_text,
-    row, stack, text, text_editor,
-};
-use iced::{Background, Border, Color, Element, Length, Padding, Task, Vector};
+use iced::widget::text::Highlighter;
+use iced::widget::{TextEditor, text, text_editor};
+use iced::{Element, Task};
 use repair_lib::repair_problem::{ProgressKind, RepairProblem};
 use std::fmt::Debug;
 use tabbed_workspace::TabbedWorkspace;
@@ -58,7 +51,7 @@ impl Default for Window {
                 panic!();
             }
         };
-        let (task, update_watcher) = description.start();
+        let (task, update_watcher) = description.start(Some(4));
         let shared_state = SharedState::new(task);
 
         let mut workspace = TabbedWorkspace::new();
