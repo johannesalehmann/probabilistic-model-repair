@@ -110,7 +110,7 @@ impl RepairGraphUITab {
         }
     }
 
-    pub fn view<'a>(&'a self, shared_state: &SharedState) -> Element<'a, RepairGraphMessage> {
+    pub fn view(&self, shared_state: &SharedState) -> Element<'_, RepairGraphMessage> {
         let mut height: f32 = 0.0;
 
         let mut graph = shared_state.repair_problem.graph.lock().unwrap();

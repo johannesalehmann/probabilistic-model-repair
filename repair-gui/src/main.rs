@@ -1,16 +1,12 @@
+pub mod controls;
 mod input;
 mod ui;
 
 use crate::input::Paths;
-use crate::ui::repair_graph::{RepairGraphMessage, RepairGraphUITab};
 use iced::advanced::image::Handle;
-use iced::advanced::widget::Operation;
-use iced::futures::{AsyncBufReadExt, StreamExt};
-use iced::widget::text::Highlighter;
-use iced::widget::{TextEditor, text, text_editor};
+use iced::daemon::ViewFn;
 use iced::{Element, Task};
 use repair_lib::repair_problem::{ProgressKind, RepairProblem};
-use std::fmt::Debug;
 use tabbed_workspace::TabbedWorkspace;
 use tokio::sync::mpsc;
 
@@ -55,9 +51,12 @@ impl Default for Window {
         let shared_state = SharedState::new(task);
 
         let mut workspace = TabbedWorkspace::new();
-        workspace.open_window(TabWindow::code_window());
-        workspace.open_window(TabWindow::MdpExplorer);
-        workspace.open_window(TabWindow::RepairGraph(RepairGraphUITab::new()));
+        workspace.open_window(TabWindow::RepairGraph(
+            ui::repair_graph::RepairGraphUITab::new(),
+        ));
+        workspace.open_window(TabWindow::TaskOverview(
+            ui::task_overview::TaskViewTab::new(),
+        ));
 
         Self {
             workspace,
@@ -106,24 +105,14 @@ enum Message {
 }
 
 enum TabWindow {
-    SourceCode { content: String },
-    CodeWindow { content: text_editor::Content },
-    RepairGraph(RepairGraphUITab),
-    MdpExplorer,
-}
-
-impl TabWindow {
-    pub fn code_window() -> Self {
-        Self::CodeWindow {
-            content: text_editor::Content::new(),
-        }
-    }
+    RepairGraph(ui::repair_graph::RepairGraphUITab),
+    TaskOverview(ui::task_overview::TaskViewTab),
 }
 
 #[derive(Clone)]
 enum TabAction {
-    EditCode(text_editor::Action),
-    RepairGraphMessage(RepairGraphMessage),
+    RepairGraphMessage(ui::repair_graph::RepairGraphMessage),
+    TaskOverviewMessage(ui::task_overview::TaskViewMessage),
 }
 
 impl tabbed_workspace::Window for TabWindow {
@@ -132,46 +121,22 @@ impl tabbed_workspace::Window for TabWindow {
 
     fn title(&self, shared_state: &SharedState) -> String {
         match self {
-            TabWindow::CodeWindow { content } => {
-                if let Some(first_line) = content.line(0)
-                    && !first_line.text.is_empty()
-                {
-                    first_line.text.to_string()
-                } else {
-                    "empty document".to_string()
-                }
-            }
             TabWindow::RepairGraph(graph) => "Repair graph".to_string(),
-            TabWindow::MdpExplorer => "MDP".to_string(),
-            _ => {
-                todo!()
-            }
+            TabWindow::TaskOverview(graph) => "Task overview".to_string(),
         }
     }
 
     fn icon(&self, shared_state: &SharedState) -> Option<Handle> {
         match self {
-            TabWindow::CodeWindow { .. } => Some(Handle::from_path(
-                "repair-gui/resources/icons/prism_logo.png",
-            )),
+            // create an image as follows:
+            // Some(Handle::from_path("repair-gui/resources/icons/prism_logo.png")),
             TabWindow::RepairGraph(graph) => None,
-            TabWindow::MdpExplorer => None,
-            _ => {
-                todo!()
-            }
+            TabWindow::TaskOverview(overview) => None,
         }
     }
 
     fn update(&mut self, action: TabAction, shared_state: &mut SharedState) -> Task<TabAction> {
         match action {
-            TabAction::EditCode(action) => {
-                if let TabWindow::CodeWindow { content } = self {
-                    content.perform(action);
-                    Task::none()
-                } else {
-                    panic!("Tried to perform edit action on incorrect tab type");
-                }
-            }
             TabAction::RepairGraphMessage(message) => {
                 if let TabWindow::RepairGraph(graph) = self {
                     graph.update(shared_state, message);
@@ -180,21 +145,25 @@ impl tabbed_workspace::Window for TabWindow {
                     panic!("Tried to perform repair graph action on incorrect tab type")
                 }
             }
+            TabAction::TaskOverviewMessage(message) => {
+                if let TabWindow::TaskOverview(task_overview) = self {
+                    task_overview.update(shared_state, message);
+                    Task::none()
+                } else {
+                    panic!("Tried to perform task overview action on incorrect tab type")
+                }
+            }
         }
     }
 
     fn view<'a>(&'a self, shared_state: &SharedState) -> Element<'a, TabAction> {
         match self {
-            TabWindow::CodeWindow { content } => TextEditor::new(content)
-                .on_action(TabAction::EditCode)
-                .into(),
-            TabWindow::MdpExplorer => text! {"mdp explorer"}.into(),
             TabWindow::RepairGraph(graph) => {
                 graph.view(shared_state).map(TabAction::RepairGraphMessage)
             }
-            _ => {
-                todo!()
-            }
+            TabWindow::TaskOverview(task_overview) => task_overview
+                .view(shared_state)
+                .map(TabAction::TaskOverviewMessage),
         }
     }
 }

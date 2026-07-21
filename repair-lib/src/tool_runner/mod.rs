@@ -7,8 +7,9 @@ use std::time::Instant;
 use tokio::sync::mpsc;
 
 pub struct MainToolRunner {
-    log_entries: HashMap<(usize, usize), LogEntry>,
-    entries_of_task: HashMap<(usize, usize), Vec<(usize, usize)>>,
+    pub entries_in_order: Vec<(usize, usize)>,
+    pub log_entries: HashMap<(usize, usize), LogEntry>,
+    pub entries_of_task: HashMap<(usize, usize), Vec<(usize, usize)>>,
     update_sender: mpsc::Sender<LogUpdate>,
     child_counter: usize,
 }
@@ -18,6 +19,7 @@ impl MainToolRunner {
         let (update_sender, update_receiver) = mpsc::channel(128);
         (
             Self {
+                entries_in_order: Vec::new(),
                 log_entries: HashMap::new(),
                 entries_of_task: HashMap::new(),
                 update_sender,
@@ -92,6 +94,7 @@ impl MainToolRunner {
                     },
                 );
                 self.add_entry_for_task(task_id, call_id);
+                self.entries_in_order.push(call_id);
             }
             LogUpdate::Changed {
                 update_id: call_id,
@@ -191,7 +194,6 @@ pub struct Status {
 pub enum StatusKind {
     Success,
     Failure,
-    Unknown,
 }
 
 pub struct ToolRunner {
@@ -321,21 +323,6 @@ impl<U> Section<U> {
     pub async fn finish_success_with_text<S: Into<String>>(self, details: S) {
         self.finish_internal(Status {
             kind: StatusKind::Success,
-            details: Some(details.into()),
-        })
-        .await
-    }
-
-    pub async fn finish_unknown(self) {
-        self.finish_internal(Status {
-            kind: StatusKind::Unknown,
-            details: None,
-        })
-        .await
-    }
-    pub async fn finish_unknown_with_text<S: Into<String>>(self, details: S) {
-        self.finish_internal(Status {
-            kind: StatusKind::Unknown,
             details: Some(details.into()),
         })
         .await

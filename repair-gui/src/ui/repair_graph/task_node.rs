@@ -138,7 +138,6 @@ fn log_list<'a>(task_id: (usize, usize), logs: &MainToolRunner) -> Element<'a, T
                 let icon = match final_status.kind {
                     StatusKind::Success => text!("✓"),
                     StatusKind::Failure => text!("✗"),
-                    StatusKind::Unknown => text!("?"),
                 };
                 if let Some(details) = &final_status.details {
                     tooltip(
