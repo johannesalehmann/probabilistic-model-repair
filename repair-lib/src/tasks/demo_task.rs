@@ -1,7 +1,7 @@
 use crate::repair_graph::{PrismModel, PropertyCollection};
 use crate::task_graph::{
-    Output, OutputsOfDependencies, ParameterDescription, ParameterType, ParameterValue, Task,
-    TaskDescription, TaskOutput,
+    Modifications, ModifiedTaskDependencies, Output, OutputsOfDependencies, ParameterDescription,
+    ParameterType, ParameterValue, Task, TaskDescription, TaskOutput,
 };
 use crate::tool_runner::ToolRunner;
 use std::any::Any;
@@ -146,9 +146,19 @@ impl Task for DemoTask {
                 .await;
         }
 
+        let mut modifications = Modifications::new();
+
+        for i in 0..2 {
+            modifications.create_task(
+                Box::new(DemoTaskDescription::new()),
+                ModifiedTaskDependencies::new().on_self(),
+            );
+        }
+
         TaskOutput::with_output(DemoTaskOutput {
             was_even: self.delay_before + self.delay_after % 2 == 0,
         })
+        .modifications(modifications)
     }
 }
 

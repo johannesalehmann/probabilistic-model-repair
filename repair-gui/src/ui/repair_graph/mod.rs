@@ -4,7 +4,7 @@ mod window_builder;
 
 use crate::SharedState;
 use crate::ui::repair_graph::window_builder::{WindowMessage, WindowState};
-use iced::widget::{Stack, container, row, space, text};
+use iced::widget::{Stack, container, row, scrollable, space, text};
 use iced::{Color, Element, Length, Padding};
 pub use layout::*;
 use repair_lib::repair_graph::RepairGraphNode;
@@ -104,7 +104,7 @@ impl RepairGraphUITab {
 
     pub fn view<'a>(&'a self, shared_state: &SharedState) -> Element<'a, RepairGraphMessage> {
         let width = shared_state.repair_graph_layout.options.width;
-        let mut height = 0.0;
+        let mut height: f32 = 0.0;
 
         let mut stack: Stack<RepairGraphMessage> = Stack::new();
 
@@ -146,21 +146,22 @@ impl RepairGraphUITab {
                         position.position.y,
                         task_node,
                     ));
+                    height = height.max(position.position.y + node_height + 100.0);
                 }
             }
         }
 
         let base = container(stack)
             .width(shared_state.repair_graph_layout.options.width)
-            .height((Length::Fill))
+            .height(height)
             .clip(true);
 
-        row![
+        let repair_graph = row![
             container(space()).width(Length::FillPortion(1)),
             base,
             container(space()).width(Length::FillPortion(1)),
-        ]
-        .into()
+        ];
+        scrollable(repair_graph).width(Length::Fill).into()
     }
 
     fn model_node<'a>(
