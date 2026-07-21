@@ -15,6 +15,7 @@ pub enum InternalWindowMessage {
     SwitchSection { index: usize },
 }
 
+#[derive(Clone)]
 pub struct WindowState {
     collapsed: Vec<bool>,
 }

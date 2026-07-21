@@ -4,7 +4,7 @@ mod window_builder;
 
 use crate::SharedState;
 use crate::ui::repair_graph::window_builder::{WindowMessage, WindowState};
-use iced::widget::{Stack, container, row, scrollable, space, text};
+use iced::widget::{Column, Row, Stack, container, row, scrollable, space, text};
 use iced::{Color, Element, Length, Padding};
 pub use layout::*;
 use repair_lib::repair_graph::RepairGraphNode;
@@ -48,11 +48,15 @@ impl RepairGraphUITab {
                 model_index,
                 message,
             } => match message {
-                WindowMessage::Internal(message) => shared_state.repair_graph_layout.layout
-                    [model_index]
-                    .model_position
-                    .window_state
-                    .update(message),
+                WindowMessage::Internal(message) => {
+                    let position = &shared_state.repair_graph_layout.node_to_position[model_index]
+                        .model_position;
+                    shared_state.repair_graph_layout.rows[position.row].entries[position.column]
+                        .as_mut()
+                        .unwrap()
+                        .window_state
+                        .update(message);
+                }
                 WindowMessage::ContentMessage(message) => {
                     self.update_model_node(message, shared_state, model_index)
                 }
@@ -63,9 +67,13 @@ impl RepairGraphUITab {
                 message,
             } => match message {
                 WindowMessage::Internal(message) => {
-                    shared_state.repair_graph_layout.layout[model_index].task_positions[task_index]
+                    let position = &shared_state.repair_graph_layout.node_to_position[model_index]
+                        .task_positions[task_index];
+                    shared_state.repair_graph_layout.rows[position.row].entries[position.column]
+                        .as_mut()
+                        .unwrap()
                         .window_state
-                        .update(message)
+                        .update(message);
                 }
                 WindowMessage::ContentMessage(message) => {
                     self.update_task_node(message, shared_state, model_index, task_index)
@@ -103,62 +111,54 @@ impl RepairGraphUITab {
     }
 
     pub fn view<'a>(&'a self, shared_state: &SharedState) -> Element<'a, RepairGraphMessage> {
-        let width = shared_state.repair_graph_layout.options.width;
         let mut height: f32 = 0.0;
 
-        let mut stack: Stack<RepairGraphMessage> = Stack::new();
-
-        let x_offset = shared_state.repair_graph_layout.options.width * 0.5;
-        let node_width = shared_state.repair_graph_layout.options.node_width;
-        let node_height = shared_state.repair_graph_layout.options.node_height;
         let mut graph = shared_state.repair_problem.graph.lock().unwrap();
-        for (model_index, model) in graph.nodes.iter().enumerate() {
-            if let Some(position) = shared_state.repair_graph_layout.model_position(model_index) {
-                let model_node = self.model_node(
-                    node_width,
-                    node_height,
-                    model_index,
-                    &position.window_state,
-                    model,
-                );
-                stack = stack.push(self.place_node(
-                    position.position.x - node_width * 0.5 + x_offset,
-                    position.position.y,
-                    model_node,
-                ))
-            }
-            for (task_index, task) in model.tasks.tasks.iter().enumerate() {
-                if let Some(position) = shared_state
-                    .repair_graph_layout
-                    .task_position(model_index, task_index)
-                {
-                    let task_node = task_node::task_node(
-                        node_width,
-                        node_height,
-                        model_index,
-                        task_index,
-                        &position.window_state,
-                        task,
-                        &graph.tool_runner,
-                    );
-                    stack = stack.push(self.place_node(
-                        position.position.x - node_width * 0.5 + x_offset,
-                        position.position.y,
-                        task_node,
-                    ));
-                    height = height.max(position.position.y + node_height + 100.0);
-                }
-            }
-        }
 
-        let base = container(stack)
-            .width(shared_state.repair_graph_layout.options.width)
-            .height(height)
-            .clip(true);
+        let mut column = Column::new();
+        for layout_row in &shared_state.repair_graph_layout.rows {
+            let mut row = Row::new();
+
+            let mut first = true;
+            for entry in &layout_row.entries {
+                if !first {
+                    row = row.push(space().width(25));
+                }
+                first = false;
+                let node = if let Some(layout) = entry {
+                    let (model_index, task_index) = layout.node_index;
+                    if let Some(task_index) = task_index {
+                        task_node::task_node(
+                            shared_state.repair_graph_layout.options.node_width,
+                            model_index,
+                            task_index,
+                            &layout.window_state,
+                            &graph.nodes[model_index].tasks.tasks[task_index],
+                            &graph.tool_runner,
+                        )
+                    } else {
+                        self.model_node(
+                            shared_state.repair_graph_layout.options.node_width,
+                            model_index,
+                            &layout.window_state,
+                            &graph.nodes[model_index],
+                        )
+                    }
+                } else {
+                    space().into()
+                };
+                row = row.push(
+                    container(node).width(shared_state.repair_graph_layout.options.node_width),
+                );
+            }
+
+            column = column.push(row);
+            column = column.push(space().height(40));
+        }
 
         let repair_graph = row![
             container(space()).width(Length::FillPortion(1)),
-            base,
+            column,
             container(space()).width(Length::FillPortion(1)),
         ];
         scrollable(repair_graph).width(Length::Fill).into()
@@ -167,7 +167,6 @@ impl RepairGraphUITab {
     fn model_node<'a>(
         &self,
         width: f32,
-        height: f32,
         model_index: usize,
         window_state: &WindowState,
         model: &RepairGraphNode,

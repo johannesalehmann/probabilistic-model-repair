@@ -11,7 +11,6 @@ use repair_lib::tool_runner::{LogDetails, MainToolRunner, StatusKind};
 
 pub fn task_node<'a>(
     width: f32,
-    height: f32,
     model_index: usize,
     task_index: usize,
     window_state: &WindowState,
