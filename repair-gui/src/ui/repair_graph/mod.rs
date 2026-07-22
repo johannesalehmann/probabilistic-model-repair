@@ -2,13 +2,15 @@ mod layout;
 mod task_node;
 mod window_builder;
 
-use crate::SharedState;
+use crate::ui::call_details::CallDetails;
 use crate::ui::repair_graph::window_builder::{WindowMessage, WindowState};
+use crate::{GlobalAction, SharedState, TabWindow};
 use iced::widget::{Column, Row, Stack, container, row, scrollable, space, text};
 use iced::{Color, Element, Length, Padding};
 pub use layout::*;
 use repair_lib::repair_graph::RepairGraphNode;
 use repair_lib::task_graph::ParameterValue;
+use tabbed_workspace::GlobalisedMessage;
 
 #[derive(Clone)]
 pub enum RepairGraphMessage {
@@ -35,6 +37,7 @@ pub enum TaskMessage {
     Run,
 }
 
+#[derive(Clone)]
 pub struct RepairGraphUITab {}
 
 impl RepairGraphUITab {
@@ -110,7 +113,10 @@ impl RepairGraphUITab {
         }
     }
 
-    pub fn view(&self, shared_state: &SharedState) -> Element<'_, RepairGraphMessage> {
+    pub fn view(
+        &self,
+        shared_state: &SharedState,
+    ) -> Element<'_, GlobalisedMessage<RepairGraphMessage, crate::GlobalAction>> {
         let mut height: f32 = 0.0;
 
         let mut graph = shared_state.repair_problem.graph.lock().unwrap();
@@ -161,7 +167,8 @@ impl RepairGraphUITab {
             column,
             container(space()).width(Length::FillPortion(1)),
         ];
-        scrollable(repair_graph).width(Length::Fill).into()
+        let scrollable: Element<_> = scrollable(repair_graph).width(Length::Fill).into();
+        scrollable
     }
 
     fn model_node<'a>(
@@ -170,12 +177,13 @@ impl RepairGraphUITab {
         model_index: usize,
         window_state: &WindowState,
         model: &RepairGraphNode,
-    ) -> Element<'a, RepairGraphMessage> {
-        let mut window_builder = window_builder::WindowBuilder::new(
-            window_state,
-            Color::from_rgb(1.0, 0.8, 0.75),
-            width,
-        );
+    ) -> Element<'a, GlobalisedMessage<RepairGraphMessage, GlobalAction>> {
+        let mut window_builder: window_builder::WindowBuilder<ModelMessage, GlobalAction> =
+            window_builder::WindowBuilder::new(
+                window_state,
+                Color::from_rgb(1.0, 0.8, 0.75),
+                width,
+            );
         window_builder.add_header(format!("Model {model_index}"));
 
         let variable_count = model
@@ -197,9 +205,11 @@ impl RepairGraphUITab {
         window_builder.add_control(text!("{property_summary}").into());
 
         let window = window_builder.finish();
-        window.map(move |message| RepairGraphMessage::ModelNodeMessage {
-            model_index,
-            message,
+        window.map(move |message| {
+            message.map(move |message| RepairGraphMessage::ModelNodeMessage {
+                model_index,
+                message,
+            })
         })
     }
 
@@ -214,5 +224,11 @@ impl RepairGraphUITab {
             .width(Length::Fill)
             .height(Length::Fill)
             .into()
+    }
+}
+
+impl From<RepairGraphUITab> for TabWindow {
+    fn from(value: RepairGraphUITab) -> Self {
+        TabWindow::RepairGraph(value)
     }
 }

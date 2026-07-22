@@ -3,6 +3,7 @@ use iced::font::Weight;
 use iced::widget::button::Status;
 use iced::widget::{Button, Space, button, column, container, row, space, stack, text};
 use iced::{Background, Border, Color, Element, Font, Length, Padding};
+use tabbed_workspace::GlobalisedMessage;
 
 #[derive(Clone)]
 pub enum WindowMessage<Message: Clone> {
@@ -42,21 +43,21 @@ impl WindowState {
     }
 }
 
-pub struct WindowBuilder<'a, 'b, Message: Clone> {
+pub struct WindowBuilder<'a, 'b, LocalMessage: Clone, GlobalMessage: Clone> {
     accent_color: Color,
     padding: f32,
     corner_radius: f32,
     width: f32,
-    elements: Vec<Element<'a, WindowMessage<Message>>>,
-    section: Option<Section<'a, Message>>,
+    elements: Vec<Element<'a, GlobalisedMessage<WindowMessage<LocalMessage>, GlobalMessage>>>,
+    section: Option<Section<'a, LocalMessage, GlobalMessage>>,
     section_index: usize,
     state: &'b WindowState,
     last_element_was_divider: bool,
     last_element_was_section: bool,
 }
 
-struct Section<'a, Message: Clone> {
-    elements: Vec<Element<'a, WindowMessage<Message>>>,
+struct Section<'a, LocalMessage: Clone, GlobalMessage: Clone> {
+    elements: Vec<Element<'a, GlobalisedMessage<WindowMessage<LocalMessage>, GlobalMessage>>>,
     kind: SectionKind,
     is_expanded: bool,
 }
@@ -89,7 +90,9 @@ impl SectionKind {
     }
 }
 
-impl<'a, 'b, Message: Clone + 'a> WindowBuilder<'a, 'b, Message> {
+impl<'a, 'b, LocalMessage: Clone + 'a, GlobalMessage: Clone + 'a>
+    WindowBuilder<'a, 'b, LocalMessage, GlobalMessage>
+{
     pub fn new(state: &'b WindowState, accent_color: Color, width: f32) -> Self {
         Self {
             accent_color,
@@ -127,21 +130,25 @@ impl<'a, 'b, Message: Clone + 'a> WindowBuilder<'a, 'b, Message> {
         self.elements.push(title.into());
     }
 
-    pub fn add_control(&mut self, control: Element<'a, Message>) {
+    pub fn add_control(
+        &mut self,
+        control: Element<'a, GlobalisedMessage<LocalMessage, GlobalMessage>>,
+    ) {
         if self.last_element_was_section {
             self.add_divider();
         }
         if let Some(section) = &mut self.section {
             if section.is_expanded {
-                section
-                    .elements
-                    .push(container(control.map(WindowMessage::ContentMessage)).into());
+                section.elements.push(
+                    container(control.map(|action| action.map(WindowMessage::ContentMessage)))
+                        .into(),
+                );
             }
         } else {
             self.last_element_was_section = false;
             self.last_element_was_divider = false;
             self.elements.push(
-                container(control.map(WindowMessage::ContentMessage))
+                container(control.map(|action| action.map(WindowMessage::ContentMessage)))
                     .padding(Padding::default().horizontal(self.padding))
                     .into(),
             );
@@ -193,11 +200,11 @@ impl<'a, 'b, Message: Clone + 'a> WindowBuilder<'a, 'b, Message> {
                     "◀"
                 };
                 let expand_button = button(character)
-                    .on_press(WindowMessage::Internal(
+                    .on_press(GlobalisedMessage::Local(WindowMessage::Internal(
                         InternalWindowMessage::SwitchSection {
                             index: self.section_index,
                         },
-                    ))
+                    )))
                     .style(|_, hovered| {
                         let brightness = match hovered {
                             Status::Active => 0.1,
@@ -242,14 +249,18 @@ impl<'a, 'b, Message: Clone + 'a> WindowBuilder<'a, 'b, Message> {
         self.elements.push(divider.into());
     }
 
-    pub fn add_call_to_action(&mut self, text: String, message: Option<Message>) {
+    pub fn add_call_to_action(
+        &mut self,
+        text: String,
+        message: Option<GlobalisedMessage<LocalMessage, GlobalMessage>>,
+    ) {
         if self.section.is_some() {
             panic!("Cannot add call to action while in a section");
         }
 
         let accent_color = self.accent_color;
         let radius = self.corner_radius;
-        let title: Element<Message> = container(
+        let title: Element<GlobalisedMessage<LocalMessage, GlobalMessage>> = container(
             Button::new(text!["▶ {text}"].width(Length::Fill).center())
                 .width(Length::Fill)
                 .on_press_maybe(message)
@@ -286,9 +297,12 @@ impl<'a, 'b, Message: Clone + 'a> WindowBuilder<'a, 'b, Message> {
         )
         .width(Length::Fill)
         .into();
-        self.elements.push(title.map(WindowMessage::ContentMessage));
+        self.elements
+            .push(title.map(|action| action.map(WindowMessage::ContentMessage)));
     }
-    pub fn finish(self) -> Element<'a, WindowMessage<Message>> {
+    pub fn finish(
+        self,
+    ) -> Element<'a, GlobalisedMessage<WindowMessage<LocalMessage>, GlobalMessage>> {
         let container = container(column(self.elements))
             .style(move |t| container::Style {
                 text_color: None,

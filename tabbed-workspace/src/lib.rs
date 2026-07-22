@@ -194,7 +194,7 @@ impl<W: Window> TabbedWorkspace<W> {
         &mut self,
         message: Message<W::TabAction>,
         shared_state: &mut W::SharedState,
-    ) -> Task<Message<W::TabAction>> {
+    ) -> Task<GlobalisedMessage<Message<W::TabAction>, W::GlobalAction>> {
         match message {
             Message::PaneGridResized(event) => {
                 self.pane_grid_state.resize(event.split, event.ratio);
@@ -228,7 +228,9 @@ impl<W: Window> TabbedWorkspace<W> {
                 }
 
                 return iced_drop::zones_on_point(
-                    move |zones| Message::HandleHoverZones { zones, cursor },
+                    move |zones| {
+                        GlobalisedMessage::Local(Message::HandleHoverZones { zones, cursor })
+                    },
                     cursor,
                     None,
                     None,
@@ -251,11 +253,13 @@ impl<W: Window> TabbedWorkspace<W> {
                 old_index,
             } => {
                 return iced_drop::zones_on_point(
-                    move |zones| Message::HandleDropZones {
-                        zones,
-                        cursor,
-                        old_pane_id,
-                        old_index,
+                    move |zones| {
+                        GlobalisedMessage::Local(Message::HandleDropZones {
+                            zones,
+                            cursor,
+                            old_pane_id,
+                            old_index,
+                        })
                     },
                     cursor,
                     None,
@@ -316,13 +320,13 @@ impl<W: Window> TabbedWorkspace<W> {
             } => {
                 let pane = self.pane_grid_state.get_mut(pane_id).unwrap();
                 let tab = &mut pane.tabs[tab_index];
-                return tab
-                    .update(action, shared_state)
-                    .map(move |action| Message::TabAction {
+                return tab.update(action, shared_state).map(move |act| {
+                    act.map(move |local| Message::TabAction {
                         pane_id,
                         tab_index,
-                        action,
-                    });
+                        action: local,
+                    })
+                });
             }
             Message::CancelDrag => {
                 println!("Cancelling drag");
@@ -333,7 +337,11 @@ impl<W: Window> TabbedWorkspace<W> {
         Task::none()
     }
 
-    pub fn view<'a, Msg: 'a, F: 'a + Clone + Fn(Message<W::TabAction>) -> Msg>(
+    pub fn view<
+        'a,
+        Msg: 'a,
+        F: 'a + Clone + Fn(GlobalisedMessage<Message<W::TabAction>, W::GlobalAction>) -> Msg,
+    >(
         &'a self,
         shared_state: &W::SharedState,
         emit_message: F,
@@ -350,7 +358,11 @@ impl<W: Window> TabbedWorkspace<W> {
                         .is_some();
                     pane_grid::Content::new(pane.view(id, above, below, left, right, shared_state))
                 })
-                .on_resize(3, Message::PaneGridResized)
+                .on_resize(3, |re| {
+                    let msg: GlobalisedMessage<Message<W::TabAction>, W::GlobalAction> =
+                        GlobalisedMessage::Local(Message::PaneGridResized(re));
+                    msg
+                })
                 .spacing(PANE_SPACING),
             )
             .style(|_| container::Style::default().background(BACKGROUND_COLOR))
@@ -368,18 +380,40 @@ impl<W: Window> TabbedWorkspace<W> {
     }
 }
 
+#[derive(Clone)]
+pub enum GlobalisedMessage<Local, Global> {
+    Local(Local),
+    Global(Global),
+}
+
+impl<Local, Global> GlobalisedMessage<Local, Global> {
+    pub fn map<Local2>(
+        self,
+        map: impl FnOnce(Local) -> Local2,
+    ) -> GlobalisedMessage<Local2, Global> {
+        match self {
+            GlobalisedMessage::Local(msg) => GlobalisedMessage::Local(map(msg)),
+            GlobalisedMessage::Global(msg) => GlobalisedMessage::Global(msg),
+        }
+    }
+}
+
 pub trait Window {
     type SharedState;
 
     type TabAction: Clone + Send + 'static;
+    type GlobalAction: Clone + Send + 'static;
     fn title(&self, shared_state: &Self::SharedState) -> String;
     fn icon(&self, shared_state: &Self::SharedState) -> Option<Handle>;
     fn update(
         &mut self,
         action: Self::TabAction,
         shared_state: &mut Self::SharedState,
-    ) -> Task<Self::TabAction>;
-    fn view<'a>(&'a self, shared_state: &Self::SharedState) -> Element<'a, Self::TabAction>;
+    ) -> Task<GlobalisedMessage<Self::TabAction, Self::GlobalAction>>;
+    fn view<'a>(
+        &'a self,
+        shared_state: &Self::SharedState,
+    ) -> Element<'a, GlobalisedMessage<Self::TabAction, Self::GlobalAction>>;
 }
 
 #[derive(Clone)]
@@ -484,15 +518,15 @@ impl<W: Window> TabView<W> {
         )
     }
 
-    pub fn view<'a>(
-        &'a self,
+    pub fn view(
+        &self,
         pane: Pane,
         above: bool,
         below: bool,
         left: bool,
         right: bool,
         shared_state: &W::SharedState,
-    ) -> Element<'a, Message<W::TabAction>> {
+    ) -> Element<'_, GlobalisedMessage<Message<W::TabAction>, W::GlobalAction>> {
         let mut tab_bar = Row::new().height(TAB_BAR_HEIGHT).width(Length::Fill);
         if !above {
             tab_bar = tab_bar.padding(Padding::default().top(PANE_SPACING))
@@ -565,7 +599,7 @@ impl<W: Window> TabView<W> {
             )
         }
 
-        let tab_bar = Container::new(tab_bar)
+        let tab_bar: Element<_> = Container::new(tab_bar)
             .width(Length::Fill)
             .style(|_| Style {
                 text_color: None,
@@ -573,19 +607,21 @@ impl<W: Window> TabView<W> {
                 border: Default::default(),
                 shadow: Default::default(),
                 snap: false,
-            });
+            })
+            .into();
+        let tab_bar = tab_bar.map(GlobalisedMessage::Local);
 
         let main_window = if self.tabs.len() == 0 {
             text!("This tab view is empty").into()
         } else {
             let selected = &self.tabs[self.selected];
-            selected
-                .view(shared_state)
-                .map(move |action| Message::TabAction {
+            selected.view(shared_state).map(move |action| {
+                action.map(move |action| Message::TabAction {
                     pane_id: pane,
                     tab_index: self.selected,
                     action,
                 })
+            })
         };
         let main_window: Element<_, _, _> = container(main_window)
             .padding(PANE_RADIUS.max(5.0))

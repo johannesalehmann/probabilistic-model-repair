@@ -5,9 +5,11 @@ mod ui;
 use crate::input::Paths;
 use iced::advanced::image::Handle;
 use iced::daemon::ViewFn;
+use iced::wgpu::wgc::global::Global;
+use iced::widget::pane_grid::Pane;
 use iced::{Element, Task};
 use repair_lib::repair_problem::{ProgressKind, RepairProblem};
-use tabbed_workspace::TabbedWorkspace;
+use tabbed_workspace::{GlobalisedMessage, TabbedWorkspace};
 use tokio::sync::mpsc;
 
 #[tokio::main]
@@ -21,7 +23,7 @@ struct Window {
     update_watcher: Option<mpsc::Receiver<ProgressKind>>, // Only stores the receiver if it is not stored in a separate thread.
 }
 
-struct SharedState {
+pub struct SharedState {
     repair_problem: RepairProblem,
     repair_graph_layout: ui::repair_graph::RepairGraphLayout,
 }
@@ -69,23 +71,31 @@ impl Default for Window {
 impl Window {
     pub fn update(&mut self, message: Message) -> Task<Message> {
         let task = match message {
-            Message::Workspace(msg) => self
-                .workspace
-                .update(msg, &mut self.shared_state)
-                .map(Message::Workspace),
-            Message::UpdateReceived { update_receiver } => {
-                self.update_watcher = Some(update_receiver);
-                self.shared_state
-                    .repair_graph_layout
-                    .update_for_graph(&self.shared_state.repair_problem.graph.lock().unwrap());
-                Task::none()
-            }
+            GlobalisedMessage::Global(global) => match global {
+                GlobalAction::OpenWindow { window } => {
+                    self.workspace.open_window(window);
+                    Task::none()
+                }
+            },
+            GlobalisedMessage::Local(local) => match local {
+                LocalMessage::Workspace(msg) => self
+                    .workspace
+                    .update(msg, &mut self.shared_state)
+                    .map(|action| action.map(LocalMessage::Workspace)),
+                LocalMessage::UpdateReceived { update_receiver } => {
+                    self.update_watcher = Some(update_receiver);
+                    self.shared_state
+                        .repair_graph_layout
+                        .update_for_graph(&self.shared_state.repair_problem.graph.lock().unwrap());
+                    Task::none()
+                }
+            },
         };
         if let Some(receiver) = self.update_watcher.take() {
             let watcher = UpdateWatcher {
                 update_receiver: receiver,
             };
-            let monitor_task = Task::future(watcher.watch());
+            let monitor_task = Task::future(watcher.watch()).map(Message::Local);
             Task::<Message>::batch([monitor_task, task])
         } else {
             task
@@ -93,36 +103,52 @@ impl Window {
     }
 
     fn view<'a>(&'a self) -> Element<'a, Message> {
-        self.workspace.view(&self.shared_state, Message::Workspace)
+        self.workspace.view(&self.shared_state, |action| {
+            action.map(LocalMessage::Workspace)
+        })
     }
 }
 
-enum Message {
+type Message = GlobalisedMessage<LocalMessage, GlobalAction>;
+
+enum LocalMessage {
     Workspace(tabbed_workspace::Message<TabAction>),
     UpdateReceived {
         update_receiver: mpsc::Receiver<ProgressKind>,
     },
 }
 
-enum TabWindow {
-    RepairGraph(ui::repair_graph::RepairGraphUITab),
-    TaskOverview(ui::task_overview::TaskViewTab),
+#[derive(Clone)]
+pub enum GlobalAction {
+    OpenWindow { window: TabWindow },
 }
 
 #[derive(Clone)]
-enum TabAction {
+pub enum TabWindow {
+    RepairGraph(ui::repair_graph::RepairGraphUITab),
+    TaskOverview(ui::task_overview::TaskViewTab),
+    CallDetails(ui::call_details::CallDetails),
+}
+
+#[derive(Clone)]
+pub enum TabAction {
     RepairGraphMessage(ui::repair_graph::RepairGraphMessage),
     TaskOverviewMessage(ui::task_overview::TaskViewMessage),
+    CallDetailMessage(ui::call_details::CallDetailsMessage),
 }
 
 impl tabbed_workspace::Window for TabWindow {
     type SharedState = SharedState;
     type TabAction = TabAction;
+    type GlobalAction = GlobalAction;
 
     fn title(&self, shared_state: &SharedState) -> String {
         match self {
-            TabWindow::RepairGraph(graph) => "Repair graph".to_string(),
-            TabWindow::TaskOverview(graph) => "Task overview".to_string(),
+            TabWindow::RepairGraph(_) => "Repair graph".to_string(),
+            TabWindow::TaskOverview(_) => "Task overview".to_string(),
+            TabWindow::CallDetails(details) => {
+                format!("Task #{}-{}", details.call_id.0, details.call_id.1)
+            }
         }
     }
 
@@ -130,12 +156,17 @@ impl tabbed_workspace::Window for TabWindow {
         match self {
             // create an image as follows:
             // Some(Handle::from_path("repair-gui/resources/icons/prism_logo.png")),
-            TabWindow::RepairGraph(graph) => None,
-            TabWindow::TaskOverview(overview) => None,
+            TabWindow::RepairGraph(_) => None,
+            TabWindow::TaskOverview(_) => None,
+            TabWindow::CallDetails(_) => None,
         }
     }
 
-    fn update(&mut self, action: TabAction, shared_state: &mut SharedState) -> Task<TabAction> {
+    fn update(
+        &mut self,
+        action: TabAction,
+        shared_state: &mut SharedState,
+    ) -> Task<GlobalisedMessage<TabAction, GlobalAction>> {
         match action {
             TabAction::RepairGraphMessage(message) => {
                 if let TabWindow::RepairGraph(graph) = self {
@@ -153,17 +184,31 @@ impl tabbed_workspace::Window for TabWindow {
                     panic!("Tried to perform task overview action on incorrect tab type")
                 }
             }
+            TabAction::CallDetailMessage(message) => {
+                if let TabWindow::CallDetails(call_details) = self {
+                    call_details.update(shared_state, message);
+                    Task::none()
+                } else {
+                    panic!("Tried to perform call detail action on incorrect tab type")
+                }
+            }
         }
     }
 
-    fn view<'a>(&'a self, shared_state: &SharedState) -> Element<'a, TabAction> {
+    fn view(
+        &self,
+        shared_state: &SharedState,
+    ) -> Element<'_, GlobalisedMessage<TabAction, GlobalAction>> {
         match self {
-            TabWindow::RepairGraph(graph) => {
-                graph.view(shared_state).map(TabAction::RepairGraphMessage)
-            }
+            TabWindow::RepairGraph(graph) => graph
+                .view(shared_state)
+                .map(|action| action.map(TabAction::RepairGraphMessage)),
             TabWindow::TaskOverview(task_overview) => task_overview
                 .view(shared_state)
-                .map(TabAction::TaskOverviewMessage),
+                .map(|action| action.map(TabAction::TaskOverviewMessage)),
+            TabWindow::CallDetails(details) => details
+                .view(shared_state)
+                .map(|action| action.map(TabAction::CallDetailMessage)),
         }
     }
 }
@@ -173,9 +218,9 @@ struct UpdateWatcher {
 }
 
 impl UpdateWatcher {
-    pub async fn watch(mut self) -> Message {
+    pub async fn watch(mut self) -> LocalMessage {
         self.update_receiver.recv().await;
-        Message::UpdateReceived {
+        LocalMessage::UpdateReceived {
             update_receiver: self.update_receiver,
         }
     }

@@ -1,15 +1,18 @@
-use crate::SharedState;
 use crate::controls::{Status, fadeout_box};
+use crate::ui::call_details::CallDetails;
+use crate::{GlobalAction, SharedState, TabWindow};
 use iced::widget::{Column, Row, container, space};
 use iced::{Element, Length};
 use repair_lib::tool_runner::{LogDetails, StatusKind};
 use std::time::{Duration, Instant};
+use tabbed_workspace::GlobalisedMessage;
 
 #[derive(Clone)]
 pub enum TaskViewMessage {
     Open,
 }
 
+#[derive(Clone)]
 pub struct TaskViewTab {}
 
 impl TaskViewTab {
@@ -23,7 +26,10 @@ impl TaskViewTab {
         }
     }
 
-    pub fn view(&self, shared_state: &SharedState) -> Element<'_, TaskViewMessage> {
+    pub fn view(
+        &self,
+        shared_state: &SharedState,
+    ) -> Element<'_, GlobalisedMessage<TaskViewMessage, GlobalAction>> {
         let graph = shared_state.repair_problem.graph.lock().unwrap();
         let mut rows = Column::new();
         for &index in &graph.tool_runner.entries_in_order {
@@ -94,8 +100,12 @@ impl TaskViewTab {
                         let mut output_text = crate::controls::TextBuilder::single_line();
                         let lines = output.lines().count();
                         output_text = output_text.with_text("(");
-                        output_text = output_text
-                            .with_link(format!("{} lines", lines), TaskViewMessage::Open);
+                        output_text = output_text.with_link(
+                            format!("{} lines", lines),
+                            GlobalisedMessage::Global(GlobalAction::OpenWindow {
+                                window: CallDetails::new(index).into(),
+                            }),
+                        );
                         output_text = output_text.with_text(")");
                         row_entries = row_entries.push(output_text.build());
                     }

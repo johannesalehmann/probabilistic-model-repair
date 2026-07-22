@@ -1,3 +1,4 @@
+use crate::GlobalAction;
 use crate::ui::repair_graph::window_builder::{SectionKind, WindowBuilder, WindowState};
 use crate::ui::repair_graph::{RepairGraphMessage, TaskMessage, window_builder};
 use iced::widget::text::Wrapping;
@@ -8,6 +9,7 @@ use repair_lib::task_graph::{
     ParameterDescription, ParameterType, ParameterValue, TaskDescription, TaskGraphNode, TaskStatus,
 };
 use repair_lib::tool_runner::{LogDetails, MainToolRunner, StatusKind};
+use tabbed_workspace::GlobalisedMessage;
 
 pub fn task_node<'a>(
     width: f32,
@@ -16,7 +18,7 @@ pub fn task_node<'a>(
     window_state: &WindowState,
     task: &TaskGraphNode,
     logs: &MainToolRunner,
-) -> Element<'a, RepairGraphMessage> {
+) -> Element<'a, GlobalisedMessage<RepairGraphMessage, GlobalAction>> {
     let mut window_builder =
         window_builder::WindowBuilder::new(window_state, Color::from_rgb(0.8, 0.8, 1.0), width);
     window_builder.add_header(format!("{}", task.description.name()));
@@ -24,7 +26,10 @@ pub fn task_node<'a>(
     match &task.status {
         TaskStatus::Ready => {
             parameter_section(&task.description, &mut window_builder, false);
-            window_builder.add_call_to_action("Run!".to_string(), Some(TaskMessage::Run));
+            window_builder.add_call_to_action(
+                "Run!".to_string(),
+                Some(GlobalisedMessage::Local(TaskMessage::Run)),
+            );
         }
         TaskStatus::Running { handle, start_time } => {
             parameter_section(&task.description, &mut window_builder, true);
@@ -38,16 +43,18 @@ pub fn task_node<'a>(
     }
 
     let window = window_builder.finish();
-    window.map(move |message| RepairGraphMessage::TaskNodeMessage {
-        model_index,
-        task_index,
-        message,
+    window.map(move |message| {
+        message.map(move |message| RepairGraphMessage::TaskNodeMessage {
+            model_index,
+            task_index,
+            message,
+        })
     })
 }
 
 fn parameter_section(
     description: &Box<dyn TaskDescription>,
-    window_builder: &mut WindowBuilder<TaskMessage>,
+    window_builder: &mut WindowBuilder<TaskMessage, GlobalAction>,
     force_collapse: bool,
 ) {
     let parameters = description.parameter_descriptions();
@@ -63,7 +70,9 @@ fn parameter_section(
 
         for (parameter_index, parameter) in parameters.iter().enumerate() {
             let value = description.parameter_value(parameter_index);
-            window_builder.add_control(parameter_control(parameter_index, parameter, &value));
+            window_builder.add_control(
+                parameter_control(parameter_index, parameter, &value).map(GlobalisedMessage::Local),
+            );
         }
 
         window_builder.end_section();
@@ -116,11 +125,11 @@ fn parameter_control<'a>(
 fn log_section(
     task_id: (usize, usize),
     logs: &MainToolRunner,
-    window_builder: &mut WindowBuilder<TaskMessage>,
+    window_builder: &mut WindowBuilder<TaskMessage, GlobalAction>,
 ) {
     window_builder.start_section("Logs", SectionKind::forced_open());
 
-    window_builder.add_control(log_list(task_id, logs));
+    window_builder.add_control(log_list(task_id, logs).map(GlobalisedMessage::Local));
     window_builder.end_section();
 }
 
