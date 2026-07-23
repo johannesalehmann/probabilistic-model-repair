@@ -31,6 +31,7 @@ pub struct WidgetGraphState<Id> {
     nodes: Vec<GraphNode>,
     connections: Vec<Connection>,
     drag: Option<Drag>,
+    drag_limit_x: Option<f32>,
 }
 
 impl<Id: Hash + Eq> WidgetGraphState<Id> {
@@ -40,16 +41,22 @@ impl<Id: Hash + Eq> WidgetGraphState<Id> {
             nodes: Vec::new(),
             connections: Vec::new(),
             drag: None,
+            drag_limit_x: None,
         }
+    }
+
+    pub fn with_drag_limit_x(mut self, limit: f32) -> Self {
+        self.drag_limit_x = Some(limit);
+        self
     }
 
     pub fn node(&self, id: Id) -> Option<&GraphNode> {
         Some(&self.nodes[*self.id_to_node.get(&id)?])
     }
 
-    pub fn add_node(&mut self, id: Id, position: Point) {
+    pub fn add_node(&mut self, id: Id, position: Point, width: f32) {
         let index = self.nodes.len();
-        self.nodes.push(GraphNode { position });
+        self.nodes.push(GraphNode { position, width });
         self.id_to_node.insert(id, index);
     }
 
@@ -85,8 +92,15 @@ impl<Id: Hash + Eq> WidgetGraphState<Id> {
     fn drag_to(&mut self, cursor_position: Point) {
         match &self.drag {
             Some(drag) => {
-                self.nodes[drag.element].position =
-                    drag.initial_position + (cursor_position - drag.initial_cursor_position)
+                let width = self.nodes[drag.element].width;
+                let mut position =
+                    drag.initial_position + (cursor_position - drag.initial_cursor_position);
+                position.x = position.x.max(width * 0.5);
+                position.y = position.y.max(0.0);
+                if let Some(limit_x) = self.drag_limit_x {
+                    position.x = position.x.min(limit_x - width * 0.5);
+                }
+                self.nodes[drag.element].position = position
             }
             None => {}
         }
@@ -96,6 +110,7 @@ impl<Id: Hash + Eq> WidgetGraphState<Id> {
 #[derive(Clone)]
 pub struct GraphNode {
     pub position: Point,
+    pub width: f32,
 }
 
 #[derive(Clone)]
@@ -239,8 +254,6 @@ where
         viewport: &Rectangle,
     ) {
         if let Some(clipped_viewport) = layout.bounds().intersection(viewport) {
-            let clipped_viewport = if true { &clipped_viewport } else { viewport };
-
             let mut frame = canvas::Frame::new(renderer, viewport.size());
             for connection in &self.state.connections {
                 let from = layout.child(connection.from);
@@ -270,7 +283,7 @@ where
                 .children
                 .iter()
                 .zip(tree.children.iter().zip(layout.children()))
-                .filter(|(_, (_, layout))| layout.bounds().intersects(clipped_viewport))
+                .filter(|(_, (_, layout))| layout.bounds().intersects(&clipped_viewport))
             {
                 child.as_widget().draw(
                     tree,
@@ -279,7 +292,7 @@ where
                     style,
                     layout,
                     cursor,
-                    clipped_viewport,
+                    &clipped_viewport,
                 )
             }
         }

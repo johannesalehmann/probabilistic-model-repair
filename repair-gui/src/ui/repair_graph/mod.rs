@@ -22,7 +22,7 @@ pub struct RepairGraphLayout {
 impl RepairGraphLayout {
     pub fn new() -> Self {
         Self {
-            layout: WidgetGraphState::new(),
+            layout: WidgetGraphState::new().with_drag_limit_x(GRAPH_WIDTH),
             window_states: Vec::new(),
         }
     }
@@ -48,7 +48,8 @@ impl RepairGraphLayout {
                     Point::new(GRAPH_WIDTH * 0.5, 0.0)
                 };
 
-                self.layout.add_node((model_index, None), position);
+                self.layout
+                    .add_node((model_index, None), position, NODE_WIDTH);
                 position
             };
             for (task_index, task) in model.tasks.tasks.iter().enumerate() {
@@ -83,7 +84,7 @@ impl RepairGraphLayout {
                     };
 
                     self.layout
-                        .add_node((model_index, Some(task_index)), position);
+                        .add_node((model_index, Some(task_index)), position, NODE_WIDTH);
                 }
             }
         }
