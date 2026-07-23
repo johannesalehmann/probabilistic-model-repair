@@ -33,6 +33,10 @@ pub struct TextBuilder<Message> {
 }
 
 impl<Message: Clone> TextBuilder<Message> {
+    pub fn base_size() -> f32 {
+        16.0
+    }
+
     pub fn new() -> Self {
         Self {
             elements: Vec::new(),
@@ -150,7 +154,7 @@ impl<Message: Clone> TextBuilder<Message> {
         Message: 'a,
     {
         let mut elements = Row::new();
-        let size = 16.0 * self.font_size_factor;
+        let size = Self::base_size() * self.font_size_factor;
         let font = Font {
             family: Family::SansSerif,
             weight: Weight::Normal,

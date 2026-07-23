@@ -59,6 +59,7 @@ impl Default for Window {
         workspace.open_window(TabWindow::TaskOverview(
             ui::task_overview::TaskViewTab::new(),
         ));
+        workspace.open_window(TabWindow::NewGraph(ui::new_graph::NewGraph::new()));
 
         Self {
             workspace,
@@ -128,6 +129,7 @@ pub enum TabWindow {
     RepairGraph(ui::repair_graph::RepairGraphUITab),
     TaskOverview(ui::task_overview::TaskViewTab),
     CallDetails(ui::call_details::CallDetails),
+    NewGraph(ui::new_graph::NewGraph),
 }
 
 #[derive(Clone)]
@@ -135,6 +137,7 @@ pub enum TabAction {
     RepairGraphMessage(ui::repair_graph::RepairGraphMessage),
     TaskOverviewMessage(ui::task_overview::TaskViewMessage),
     CallDetailMessage(ui::call_details::CallDetailsMessage),
+    NewGraphMessage(ui::new_graph::NewGraphMessage),
 }
 
 impl tabbed_workspace::Window for TabWindow {
@@ -149,6 +152,7 @@ impl tabbed_workspace::Window for TabWindow {
             TabWindow::CallDetails(details) => {
                 format!("Task #{}-{}", details.call_id.0, details.call_id.1)
             }
+            TabWindow::NewGraph(_) => "New graph".to_string(),
         }
     }
 
@@ -159,6 +163,7 @@ impl tabbed_workspace::Window for TabWindow {
             TabWindow::RepairGraph(_) => None,
             TabWindow::TaskOverview(_) => None,
             TabWindow::CallDetails(_) => None,
+            TabWindow::NewGraph(_) => None,
         }
     }
 
@@ -192,6 +197,14 @@ impl tabbed_workspace::Window for TabWindow {
                     panic!("Tried to perform call detail action on incorrect tab type")
                 }
             }
+            TabAction::NewGraphMessage(message) => {
+                if let TabWindow::NewGraph(new_graph) = self {
+                    new_graph.update(shared_state, message);
+                    Task::none()
+                } else {
+                    panic!("Tried to perform new graph action on incorrect tab type")
+                }
+            }
         }
     }
 
@@ -209,6 +222,9 @@ impl tabbed_workspace::Window for TabWindow {
             TabWindow::CallDetails(details) => details
                 .view(shared_state)
                 .map(|action| action.map(TabAction::CallDetailMessage)),
+            TabWindow::NewGraph(new_graph) => new_graph
+                .view(shared_state)
+                .map(|action| action.map(TabAction::NewGraphMessage)),
         }
     }
 }

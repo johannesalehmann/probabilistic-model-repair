@@ -14,6 +14,7 @@ use iced_core::widget::Id;
 use iced_core::{Background, Border, Color, Length, Padding, Point, Rectangle};
 use iced_drop::widget::droppable::Droppable;
 use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
 use std::time::Duration;
 
 const BACKGROUND_COLOR: Color = Color {
@@ -414,6 +415,12 @@ pub trait Window {
         &'a self,
         shared_state: &Self::SharedState,
     ) -> Element<'a, GlobalisedMessage<Self::TabAction, Self::GlobalAction>>;
+}
+
+impl<Local, Global> Debug for GlobalisedMessage<Local, Global> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "(Message)")
+    }
 }
 
 #[derive(Clone)]

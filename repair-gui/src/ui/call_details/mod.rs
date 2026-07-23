@@ -1,8 +1,10 @@
 use crate::controls::TextBuilder;
 use crate::{GlobalAction, SharedState, TabWindow};
-use iced::Element;
-use iced::widget::{Column, scrollable, space};
+use iced::advanced::text::Editor;
+use iced::widget::{Column, scrollable, space, text};
+use iced::{Element, Font, Length, Padding};
 use repair_lib::tool_runner::LogDetails;
+use std::time::Instant;
 use tabbed_workspace::GlobalisedMessage;
 
 #[derive(Clone)]
@@ -26,6 +28,7 @@ impl CallDetails {
         &self,
         shared_state: &SharedState,
     ) -> Element<'_, GlobalisedMessage<CallDetailsMessage, GlobalAction>> {
+        let start = Instant::now();
         let graph = shared_state.repair_problem.graph.lock().unwrap();
         let task = graph.tool_runner.entry(self.call_id);
         if let LogDetails::ToolCall {
@@ -50,11 +53,11 @@ impl CallDetails {
 
             if let Some(output) = output {
                 column = column.push(space().height(30));
-
-                column = column.push(TextBuilder::new().with_bold("Output").build());
                 column = column.push(TextBuilder::new().with_typewriter(output).build());
             }
-            scrollable(column).into()
+            scrollable(column.padding(Padding::default().right(16)))
+                .width(Length::Fill)
+                .into()
         } else {
             unreachable!()
         }
