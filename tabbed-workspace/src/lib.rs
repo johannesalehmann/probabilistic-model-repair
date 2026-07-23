@@ -344,7 +344,7 @@ impl<W: Window> TabbedWorkspace<W> {
         F: 'a + Clone + Fn(GlobalisedMessage<Message<W::TabAction>, W::GlobalAction>) -> Msg,
     >(
         &'a self,
-        shared_state: &W::SharedState,
+        shared_state: &'a W::SharedState,
         emit_message: F,
     ) -> Element<'a, Msg> {
         Element::map(
@@ -413,7 +413,7 @@ pub trait Window {
     ) -> Task<GlobalisedMessage<Self::TabAction, Self::GlobalAction>>;
     fn view<'a>(
         &'a self,
-        shared_state: &Self::SharedState,
+        shared_state: &'a Self::SharedState,
     ) -> Element<'a, GlobalisedMessage<Self::TabAction, Self::GlobalAction>>;
 }
 
@@ -525,15 +525,15 @@ impl<W: Window> TabView<W> {
         )
     }
 
-    pub fn view(
-        &self,
+    pub fn view<'a>(
+        &'a self,
         pane: Pane,
         above: bool,
         below: bool,
         left: bool,
         right: bool,
-        shared_state: &W::SharedState,
-    ) -> Element<'_, GlobalisedMessage<Message<W::TabAction>, W::GlobalAction>> {
+        shared_state: &'a W::SharedState,
+    ) -> Element<'a, GlobalisedMessage<Message<W::TabAction>, W::GlobalAction>> {
         let mut tab_bar = Row::new().height(TAB_BAR_HEIGHT).width(Length::Fill);
         if !above {
             tab_bar = tab_bar.padding(Padding::default().top(PANE_SPACING))

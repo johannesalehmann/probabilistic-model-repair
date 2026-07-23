@@ -2,7 +2,9 @@ pub mod controls;
 mod input;
 mod ui;
 
+use crate::controls::WidgetGraphState;
 use crate::input::Paths;
+use crate::ui::repair_graph::RepairGraphLayout;
 use iced::advanced::image::Handle;
 use iced::daemon::ViewFn;
 use iced::wgpu::wgc::global::Global;
@@ -25,13 +27,13 @@ struct Window {
 
 pub struct SharedState {
     repair_problem: RepairProblem,
-    repair_graph_layout: ui::repair_graph::RepairGraphLayout,
+    repair_graph_layout: RepairGraphLayout,
 }
 
 impl SharedState {
     pub fn new(repair_problem: RepairProblem) -> Self {
-        let mut repair_graph_layout = ui::repair_graph::RepairGraphLayout::new();
-        repair_graph_layout.update_for_graph(&repair_problem.graph.lock().unwrap());
+        let mut repair_graph_layout = RepairGraphLayout::new();
+        repair_graph_layout.update_layout(&repair_problem.graph.lock().unwrap());
         Self {
             repair_problem,
             repair_graph_layout,
@@ -87,7 +89,7 @@ impl Window {
                     self.update_watcher = Some(update_receiver);
                     self.shared_state
                         .repair_graph_layout
-                        .update_for_graph(&self.shared_state.repair_problem.graph.lock().unwrap());
+                        .update_layout(&self.shared_state.repair_problem.graph.lock().unwrap());
                     Task::none()
                 }
             },
@@ -208,10 +210,10 @@ impl tabbed_workspace::Window for TabWindow {
         }
     }
 
-    fn view(
-        &self,
-        shared_state: &SharedState,
-    ) -> Element<'_, GlobalisedMessage<TabAction, GlobalAction>> {
+    fn view<'a>(
+        &'a self,
+        shared_state: &'a SharedState,
+    ) -> Element<'a, GlobalisedMessage<TabAction, GlobalAction>> {
         match self {
             TabWindow::RepairGraph(graph) => graph
                 .view(shared_state)

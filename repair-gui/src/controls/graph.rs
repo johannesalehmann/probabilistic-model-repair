@@ -94,7 +94,7 @@ impl<Id: Hash + Eq> WidgetGraphState<Id> {
 
 #[derive(Clone)]
 pub struct GraphNode {
-    position: Point,
+    pub position: Point,
 }
 
 #[derive(Clone)]

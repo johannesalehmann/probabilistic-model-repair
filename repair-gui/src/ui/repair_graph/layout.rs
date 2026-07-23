@@ -1,8 +1,5 @@
 use crate::ui::repair_graph::window_builder::WindowState;
-use iced::Vector;
-use rand::RngExt;
 use repair_lib::repair_graph::RepairGraph;
-use uuid::uuid;
 
 pub struct LayoutOptions {
     pub node_width: f32,
