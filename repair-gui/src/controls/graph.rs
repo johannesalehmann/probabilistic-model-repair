@@ -254,27 +254,51 @@ where
         viewport: &Rectangle,
     ) {
         if let Some(clipped_viewport) = layout.bounds().intersection(viewport) {
-            let mut frame = canvas::Frame::new(renderer, viewport.size());
+            let mut frame = canvas::Frame::with_bounds(renderer, clipped_viewport);
             for connection in &self.state.connections {
                 let from = layout.child(connection.from);
                 let to = layout.child(connection.to);
+                let start = from.bounds().position()
+                    + Vector::new(
+                        from.bounds().size().width * 0.5,
+                        from.bounds().size().height,
+                    );
+                let end = to.bounds().position() + Vector::new(to.bounds().width * 0.5, 0.0);
 
-                let start_x = from.bounds().x + from.bounds().width * 0.5;
-                let start_y = from.bounds().y + from.bounds().height;
-                let end_x = to.bounds().x + to.bounds().width * 0.5;
-                let end_y = to.bounds().y;
+                let path = canvas::Path::line(start, end);
 
-                let path =
-                    canvas::Path::line(Point::new(start_x, start_y), Point::new(end_x, end_y));
-
-                canvas::Path::new(|builder| {
-                    builder.move_to(Point::new(start_x, start_y));
-                    builder.move_to(Point::new(end_x, end_y))
-                });
                 frame.stroke(
                     &path,
-                    Stroke::default().with_color(Color::BLACK).with_width(3.0),
+                    Stroke::default().with_color(Color::BLACK).with_width(1.5),
                 );
+
+                let direction = end - start;
+                if direction != Vector::ZERO {
+                    let normalised_direction = direction
+                        * (1.0 / (direction.x * direction.x + direction.y * direction.y).sqrt());
+                    let orthogonal = Vector::new(normalised_direction.y, -normalised_direction.x);
+
+                    let tip_length = 5.0;
+                    let tip_width = 5.0;
+
+                    let tip_left_path = canvas::Path::line(
+                        end - normalised_direction * tip_length + orthogonal * tip_width,
+                        end,
+                    );
+                    frame.stroke(
+                        &tip_left_path,
+                        Stroke::default().with_color(Color::BLACK).with_width(1.5),
+                    );
+
+                    let tip_right_path = canvas::Path::line(
+                        end - normalised_direction * tip_length - orthogonal * tip_width,
+                        end,
+                    );
+                    frame.stroke(
+                        &tip_right_path,
+                        Stroke::default().with_color(Color::BLACK).with_width(1.5),
+                    );
+                }
             }
 
             renderer.draw_geometry(frame.into_geometry());
