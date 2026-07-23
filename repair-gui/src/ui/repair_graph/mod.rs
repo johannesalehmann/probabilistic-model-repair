@@ -29,6 +29,8 @@ impl RepairGraphLayout {
 
     pub fn update_layout(&mut self, graph: &RepairGraph) {
         let v_size = 100.0;
+        let mut new_dependencies = Vec::new();
+
         for (model_index, model) in graph.nodes.iter().enumerate() {
             if self.window_states.len() <= model_index {
                 self.window_states
@@ -39,6 +41,10 @@ impl RepairGraphLayout {
                 node.position
             } else {
                 let position = if let Some(parent) = &model.parent {
+                    new_dependencies.push((
+                        (parent.model_index, Some(parent.task_index)),
+                        (model_index, None),
+                    ));
                     self.layout
                         .node((parent.model_index, Some(parent.task_index)))
                         .map(|n| n.position)
@@ -59,6 +65,17 @@ impl RepairGraphLayout {
                         .push(WindowState::with_expanded_sections(4));
                 }
                 if self.layout.node((model_index, Some(task_index))).is_none() {
+                    for &dependency in &task.dependencies {
+                        new_dependencies.push((
+                            (model_index, Some(dependency)),
+                            (model_index, Some(task_index)),
+                        ));
+                    }
+                    if task.dependencies.len() == 0 {
+                        new_dependencies
+                            .push(((model_index, None), (model_index, Some(task_index))));
+                    }
+
                     let position = if task.dependencies.len() == 0 {
                         model_position + Vector::new(0.0, v_size)
                     } else {
@@ -87,6 +104,9 @@ impl RepairGraphLayout {
                         .add_node((model_index, Some(task_index)), position, NODE_WIDTH);
                 }
             }
+        }
+        for (from, to) in new_dependencies {
+            self.layout.add_connection(from, to);
         }
     }
 }
