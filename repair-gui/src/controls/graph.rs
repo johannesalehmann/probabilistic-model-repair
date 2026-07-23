@@ -178,6 +178,19 @@ where
         renderer: &Renderer,
         limits: &layout::Limits,
     ) -> layout::Node {
+        // When the graph is compressed, this keeps its nodes centered.
+        // It may be more desirable to only do this until elements land off-screen, but that
+        // requires two passes for layout.
+        let offset_x = if let Length::Fixed(width) = self.width {
+            let max_width = limits.max().width;
+            if max_width < width {
+                (max_width - width) * 0.5
+            } else {
+                0.0
+            }
+        } else {
+            0.0
+        };
         let mut children = Vec::new();
         let mut max: Point = Point::new(0.0, 0.0);
         for (index, (graph_node, child)) in self
@@ -191,7 +204,7 @@ where
                 child
                     .as_widget_mut()
                     .layout(&mut tree.children[index], renderer, &Limits::NONE);
-            let top_mid_position = graph_node.position;
+            let top_mid_position = graph_node.position + Vector::new(offset_x, 0.0);
             let top_left_position = top_mid_position - Vector::new(node.size().width * 0.5, 0.0);
             let bottom_right =
                 top_left_position + Vector::new(node.size().width, node.size().height);
@@ -204,7 +217,7 @@ where
             Length::Fill => limits.max().width,
             Length::FillPortion(_) => limits.max().width,
             Length::Shrink => max.x,
-            Length::Fixed(size) => size,
+            Length::Fixed(size) => size.min(limits.max().width),
         };
         let height = match self.height {
             Length::Fill => limits.max().height,
