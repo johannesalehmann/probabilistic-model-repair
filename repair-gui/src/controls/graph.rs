@@ -5,6 +5,7 @@ use iced::advanced::widget::{Operation, Tree};
 use iced::advanced::{Clipboard, Layout, Shell, Widget, layout, overlay, renderer, widget};
 use iced::mouse::Button;
 use iced::widget::canvas::Stroke;
+use iced::widget::text::LineHeight;
 use iced::widget::{canvas, space};
 use iced::{Color, Element, Event, Length, Point, Rectangle, Size, Vector, mouse};
 use std::collections::HashMap;
@@ -147,6 +148,16 @@ where
         let index = self.state.id_to_node[&id];
         self.children[index] = child.into();
     }
+
+    pub fn width(mut self, width: impl Into<Length>) -> Self {
+        self.width = width.into();
+        self
+    }
+
+    pub fn height(mut self, height: impl Into<Length>) -> Self {
+        self.height = height.into();
+        self
+    }
 }
 
 impl<Id: Hash + Eq, MsgFact: Fn(WidgetGraphAction) -> Message, Message, Theme, Renderer>
@@ -189,7 +200,19 @@ where
             children.push(node);
             max = Point::new(max.x.max(bottom_right.x), max.y.max(bottom_right.y));
         }
-        layout::Node::with_children(Size::new(max.x, max.y), children)
+        let width = match self.width {
+            Length::Fill => limits.max().width,
+            Length::FillPortion(_) => limits.max().width,
+            Length::Shrink => max.x,
+            Length::Fixed(size) => size,
+        };
+        let height = match self.height {
+            Length::Fill => limits.max().height,
+            Length::FillPortion(_) => limits.max().height,
+            Length::Shrink => max.y,
+            Length::Fixed(size) => size,
+        };
+        layout::Node::with_children(Size::new(width, height), children)
     }
 
     fn draw(

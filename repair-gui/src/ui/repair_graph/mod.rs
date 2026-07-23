@@ -200,7 +200,8 @@ impl RepairGraphUITab {
             _,
         > = WidgetGraph::new(&shared_state.repair_graph_layout.layout, |msg| {
             GlobalisedMessage::Local(RepairGraphMessage::GraphAction(msg))
-        });
+        })
+        .width(GRAPH_WIDTH);
 
         for (model_index, model) in graph.nodes.iter().enumerate() {
             if shared_state
@@ -291,19 +292,6 @@ impl RepairGraphUITab {
                 message,
             })
         })
-    }
-
-    fn place_node<'a>(
-        &self,
-        x: f32,
-        y: f32,
-        content: Element<'a, RepairGraphMessage>,
-    ) -> Element<'a, RepairGraphMessage> {
-        container(content)
-            .padding(Padding::default().left(x).top(y))
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
     }
 }
 
